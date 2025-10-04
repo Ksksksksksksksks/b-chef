@@ -7,42 +7,47 @@ This section describes how to prepare and manage the **video data** used in the 
 
 ### ☁️ 1. Configure Your DVC Remote Storage
 
-Each user or team configures their **own DVC storage** depending on their environment and capacity.
-Common options:
+The project uses [DVC](https://dvc.org/) to manage large video and model files.
+Each developer should configure their own local or cloud storage path before running preprocessing or training scripts.
 
-* Local HDD/SSD directory
-* External drive
-* Cloud storage (e.g., Google Drive, S3, Azure, SSH server, etc.)
+By default, `.dvc/config` contains several named remotes:
 
-To configure:
-
-```bash
-dvc remote add -d myremote <your_storage_url>
-dvc push
+```ini
+['remote "yandex_local"']
+    url = Z:\b_chef
+['remote "yandex_photo_datasets"']
+    url = Z:\b_chef\photo_datasets
+['remote "yandex_video_datasets"']
+    url = Z:\b_chef\video_datasets
+['remote "yandex_models"']
+    url = Z:\b_chef\models
 ```
 
-Examples:
+These are just **example local paths** (in this case, Yandex.Disk mounted as drive `Z:`).
+You can modify them to match your environment using the command below:
 
 ```bash
-dvc remote add -d gdrive gdrive://1AbCDeF123xyz
-# or
-dvc remote add -d s3 s3://bchef-videos
+dvc remote modify yandex_video_datasets url /your/custom/path/video_datasets
 ```
 
-Once configured, you can:
+If you use a cloud storage service (e.g., Yandex Cloud, Google Drive, AWS S3), configure the corresponding remote URL:
 
-* **Push processed clips** to your DVC storage:
+```bash
+dvc remote modify yandex_video_datasets url s3://mybucket/video_datasets
+```
 
-  ```bash
-  dvc push
-  ```
-* **Pull them** when needed:
+Once your remotes are configured, you can **pull or push** data as usual:
 
-  ```bash
-  dvc pull data/processed/video_clips/
-  ```
+```bash
+# To fetch processed clips or models
+dvc pull -r yandex_video_datasets
+
+# To upload newly generated clips or models
+dvc push -r yandex_video_datasets
+```
 
 ---
+
 
 
 ### 📦 2. Download the Raw Dataset
