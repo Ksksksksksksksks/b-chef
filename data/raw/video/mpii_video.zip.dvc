@@ -1,0 +1,5 @@
+outs:
+- md5: 96169bfbbc82a8ace4fa128ddb4abfb7
+  size: 9266932130
+  hash: md5
+  path: mpii_video.zip
