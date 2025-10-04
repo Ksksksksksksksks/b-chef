@@ -1,0 +1,11 @@
+[core]
+    remote = yandex_local
+    autostage = true
+['remote "yandex_local"']
+    url = Z:\b_chef
+['remote "yandex_photo_datasets"']
+    url = Z:\b_chef\photo_datasets
+['remote "yandex_video_datasets"']
+    url = Z:\b_chef\video_datasets
+['remote "yandex_models"']
+    url = Z:\b_chef\models
