@@ -82,32 +82,57 @@ with zipfile.ZipFile(zip_path, 'r') as zf:
 
         cap = cv2.VideoCapture(tmp_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
+        if fps is None or fps <= 0 or fps != fps:
+            fps = 25.0
+            print("  Warning: fps not detected, using fallback fps=25.0")
+
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
         start_frame = int(row['start_frame'])
         end_frame = int(row['end_frame'])
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        duration_sec = (end_frame - start_frame) / fps
+
+        # clamp end_frame
+        if total_frames > 0:
+            end_frame = min(end_frame, total_frames - 1)
+
+        original_duration = (end_frame - start_frame) / fps if fps else 0.0
+        print(f"  Original clip duration: {original_duration:.2f}s (frames {start_frame}-{end_frame})")
 
         # === handle too long clips ===
-        if duration_sec > MAX_CLIP_SECONDS:
-            end_frame = start_frame + int(MAX_CLIP_SECONDS * fps)
-            print(f"  Clip too long ({duration_sec:.1f}s). Trimmed to {MAX_CLIP_SECONDS}s.")
+        if original_duration > MAX_CLIP_SECONDS:
+            new_end = start_frame + int(MAX_CLIP_SECONDS * fps)
+            end_frame = min(new_end, total_frames - 1) if total_frames > 0 else new_end
+            trimmed_duration = (end_frame - start_frame) / fps
+            print(f"  Trimmed to {trimmed_duration:.2f}s ({MAX_CLIP_SECONDS}s max)")
 
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         fourcc = cv2.VideoWriter_fourcc(*'XVID')
 
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+        frames_to_write = max(0, end_frame - start_frame + 1)
+
         out = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
         current_frame = 0
 
-        while True:
+        written = 0
+        for _ in range(frames_to_write):
             ret, frame = cap.read()
             if not ret:
                 break
-            if start_frame <= current_frame <= end_frame:
-                out.write(frame)
-            current_frame += 1
-            if current_frame > end_frame:
-                break
+            out.write(frame)
+            written += 1
+
+        print(f"  Wrote {written} frames to {out_name}")
+
+        # while True:
+        #     ret, frame = cap.read()
+        #     if not ret:
+        #         break
+        #     if start_frame <= current_frame <= end_frame:
+        #         out.write(frame)
+        #     current_frame += 1
+        #     if current_frame > end_frame:
+        #         break
 
         cap.release()
         out.release()
@@ -117,7 +142,7 @@ with zipfile.ZipFile(zip_path, 'r') as zf:
         try:
             subprocess.run(["dvc", "add", out_path], check=True)
             os.remove(out_path)
-            category_counts +=1
+            category_counts[category] +=1
             print(f"  Added to DVC and removed local file: {out_name}\n")
         except subprocess.CalledProcessError as e:
             print(f"  Error adding {out_name} to DVC: {e}\n")
