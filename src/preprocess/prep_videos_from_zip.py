@@ -11,33 +11,26 @@ pd.set_option("display.max_rows", None)
 base_dir = os.path.dirname(__file__)  # src/preprocess
 zip_path = os.path.abspath(os.path.join(base_dir, "../../data/raw/video/mpii_video.zip"))
 csv_path = os.path.abspath(os.path.join(base_dir, "../../data/raw/video/mpii_ground_truth.csv"))
+actions_path = os.path.abspath(os.path.join(base_dir, "../../data/raw/video/mpii_actions_suitable.txt"))
 clips_dir = os.path.abspath(os.path.join(base_dir, "../../data/processed/video_clips"))
 os.makedirs(clips_dir, exist_ok=True)
 
-model_classes_dir = os.path.abspath(os.path.join(base_dir, "../../data/external/kinetics_classnames_clean.json"))
-
 # === Config ===
-MAX_CLIP_SECONDS = 10
+MAX_CLIP_SECONDS = 15
 FRAME_EXTENSION = ".avi"
 DVC_EXTENSION = ".avi.dvc"
 
-# === Load model classes ===
-print("Loading SlowFast (Kinetics-400) classes...")
-model_classes = set(get_slowfast_classes())
-print(f"Loaded {len(model_classes)} model classes.")
 
 # === Load ground truth ===
 df = pd.read_csv(csv_path, header=None,
                  names=["subject", "file_name", "start_frame", "end_frame", "category_id", "action"])
 
-unique_actions = df['action'].str.lower().unique()
-needed_categories = [a for a in unique_actions if a not in model_classes]
+# Load needed categories from text file
+with open(actions_path, "r", encoding="utf-8") as f:
+    needed_categories = [line.strip() for line in f if line.strip()]
 
-print(f"\nFound {len(unique_actions)} unique actions in ground truth.")
-print(f"{len(needed_categories)} actions are not covered by the model:")
-print(needed_categories)
+df = df[df['action'].isin(needed_categories)]
 
-df = df[df['action'].str.lower().isin(needed_categories)]
 print(f"\nFiltered to {len(df)} clips to extract.\n")
 
 # === Extract clips from ZIP ===
@@ -60,10 +53,8 @@ with zipfile.ZipFile(zip_path, 'r') as zf:
         if not video_name_in_zip:
             print(f"Not found video {csv_file_name} in ZIP")
             continue
-
         print(f"Processing {out_name} (category={category})")
 
-        # временный файл
         with zf.open(video_name_in_zip) as video_file:
             tmp_path = os.path.join(tempfile.gettempdir(), "temp.avi")
             with open(tmp_path, "wb") as f:
