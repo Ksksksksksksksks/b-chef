@@ -1,4 +1,6 @@
 import zipfile
+from collections import defaultdict
+
 import cv2
 import pandas as pd
 import os
@@ -19,6 +21,7 @@ os.makedirs(clips_dir, exist_ok=True)
 MAX_CLIP_SECONDS = 15
 FRAME_EXTENSION = ".avi"
 DVC_EXTENSION = ".avi.dvc"
+MAX_CLIPS_PER_CATEGORY = 75
 
 
 # === Load ground truth ===
@@ -31,11 +34,28 @@ with open(actions_path, "r", encoding="utf-8") as f:
 
 df = df[df['action'].isin(needed_categories)]
 
-print(f"\nFiltered to {len(df)} clips to extract.\n")
+# Track how many clips we’ve processed per category
+category_counts = defaultdict(int)
+
+limited_df = (
+    df.groupby("action")
+      .head(MAX_CLIPS_PER_CATEGORY)
+      .reset_index(drop=True)
+)
+
+print(f"After applying limit ({MAX_CLIPS_PER_CATEGORY} per category): {len(limited_df)} clips total.\n")
+
+df = limited_df
 
 # === Extract clips from ZIP ===
 with zipfile.ZipFile(zip_path, 'r') as zf:
     for _, row in df.iterrows():
+        category = row['action'].replace(' ', '_')
+
+        # Skip if limit reached
+        if category_counts[category] >= MAX_CLIPS_PER_CATEGORY:
+            continue
+
         csv_file_name = row['file_name']
         category = row['action'].replace(' ', '_')
         category_dir = os.path.join(clips_dir, category)
@@ -97,6 +117,11 @@ with zipfile.ZipFile(zip_path, 'r') as zf:
         try:
             subprocess.run(["dvc", "add", out_path], check=True)
             os.remove(out_path)
+            category_counts +=1
             print(f"  Added to DVC and removed local file: {out_name}\n")
         except subprocess.CalledProcessError as e:
             print(f"  Error adding {out_name} to DVC: {e}\n")
+
+print("\n=== Summary ===")
+for cat, count in category_counts.items():
+    print(f"{cat}: {count} clips")
