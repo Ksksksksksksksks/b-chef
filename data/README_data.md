@@ -70,7 +70,7 @@ data/raw/video/
 └── mpii_cooking_groundtruth.csv
 ```
 
----
+
 
 ### ⚙️ 3. Run Preprocessing
 
@@ -84,16 +84,24 @@ The script will:
 
 1. Read the annotation CSV with action labels and frame ranges.
 
-2. Locate only the required .avi files inside the ZIP archive — it does not unpack the whole dataset.
+2. Read the list of **required action categories** from a text file (`mpii_actions_suitable.txt`), which was manually curated based on:
 
-3. Extract each required video temporarily, then cut it into short clips corresponding to actions (e.g., peel, pour, cut dice).
+   * all categories in the dataset, and
+   * existing categories in the pre-trained model,
+     so that **they do not overlap** with the model’s outputs.
 
-4. Save each clip temporarily as .avi, add it to DVC, and delete the local .avi to keep storage clean.
+3. Locate only the required `.avi` files inside the ZIP archive — it does not unpack the whole dataset.
+
+4. Extract each required video temporarily, then cut it into short clips corresponding to the selected actions (e.g., peel, pour, cut dice).
+
+5. Clip duration is optionally limited to a maximum number of seconds to prevent overly long videos, which helps training.
+
+6. Save each clip temporarily as `.avi`, add it to DVC, and delete the local `.avi` to keep storage clean.
 
 Example console output:
 
 ```
-Processing video s08-d02-cam-002.avi
+Processing video s08-d02-cam-002.avi, category peel
 Added to DVC and removed local file: s08-d02-cam-002_1433_2347.avi
 ```
 
@@ -110,7 +118,6 @@ data/processed/video_clips/
 
 Each `.avi.dvc` file is a **lightweight metadata file** tracked by Git, while the actual video data is managed by DVC in remote storage.
 
----
 
 
 ### 📋 4. Notes
