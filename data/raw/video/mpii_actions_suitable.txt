@@ -3,6 +3,7 @@ cut slices
 cut apart
 cut dice
 peel
+grate
 put on plate
 stir
 put on cutting-board
