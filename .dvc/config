@@ -9,3 +9,5 @@
     url = Z:\b_chef\video_datasets
 ['remote "yandex_models"']
     url = Z:\b_chef\models
+['remote "local_photos"']
+    url = /Users/ksu/Documents/dvc_storage/photos
