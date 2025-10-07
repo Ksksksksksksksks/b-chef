@@ -1,0 +1,5 @@
+outs:
+- md5: ec02ad3de1e8456fe7364e0291e1d5ec
+  size: 292657505
+  hash: md5
+  path: filtered_food_dataset.zip

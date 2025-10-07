@@ -1,0 +1,5 @@
+outs:
+- md5: a57f9fd569d2e6d3dab6fbe3227645db
+  size: 14901329
+  hash: md5
+  path: uec_food256_dataset.zip
