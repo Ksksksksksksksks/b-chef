@@ -1,6 +1,8 @@
 [core]
     remote = yandex_local
     autostage = true
+[cache]
+    type = hardlink
 ['remote "yandex_local"']
     url = Z:\b_chef
 ['remote "yandex_photo_datasets"']
