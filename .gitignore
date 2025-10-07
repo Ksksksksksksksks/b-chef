@@ -1,3 +1,5 @@
 /.env
 /mpii_video.zip
 /data/raw/video/mpii_video.zip
+.DS_Store
+/data/raw/photos
