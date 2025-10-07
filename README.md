@@ -21,15 +21,38 @@ It can speak in two tones:
 
 ---
 
-## 📂 Project Structure
-```
+## 📝 Current Status
 
-/b-chef
-/bot          # Telegram bot
-/cv           # computer vision (food state detection)
-/nlp          # text feedback analysis
-/rl           # reinforcement learning
-/docs         # documentation
+We have completed preprocessing of the photo datasets and set up the initial food state classification model:
+
+* Food State Classification Model
+
+  * Pre-trained on Food-101 dataset
+  * Fine-tuning script:
+  ```src/models/train.py```
+  * Datasets:
+
+```  
+    data/processed/images/filtered_food_dataset.zip.dvc
+    data/raw/photos.dvc   # doneness dataset
+```    
+* Video Action Recognition
+
+  * Model: pre-trained SlowFast (training not started yet)
+  * Dataset: planned to be used via Kaggle, stored in:
+
+```
+    data/processed/video_dataset/tensors.7z.dvc
+```
+This reflects the current stage: completed preprocessing for photos and initial setup for model training, while video model preparation is in progress.
+
+---
+
+## 📂 Project Structure 
+```
+/.dvc   # config for DVC storages
+/data   # here all data are stored - raw/preprocessed/external
+/src   # here main script are stored - fro preprocessing and models training
 
 ````
 
