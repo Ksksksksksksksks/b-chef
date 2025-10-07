@@ -1,3 +1,74 @@
+
+## 🖼️ Photo Data — Preprocessing
+
+This section describes how photo datasets are filtered and prepared for model fine-tuning.
+
+---
+
+### Step 1: Dataset Filtering and Preparation
+
+To adapt open-source datasets (mainly **Food-101**) to the project’s focus on *basic cooking* (e.g., frying meat, boiling eggs), a preprocessing script filters only relevant food classes based on **custom label mappings**.
+Filtered images (~7,000 samples) are combined with similar classes from other datasets to maintain balance.
+
+Run:
+
+```bash
+python src/preprocess/create_filtered_food_dataset.py
+```
+
+This script:
+
+* Loads **Food-101** and **UEC FOOD 256** datasets (downloads UEC FOOD 256 if not present).
+* Filters images by relevant categories (meat, eggs, grains).
+* Limits the number of images per category (default 500).
+* Organizes images in temporary directories and packages them into `.zip` archives.
+* Adds the archives to **DVC** and removes local copies to save space.
+
+Output:
+
+```
+data/processed/images/
+├── filtered_food_dataset.zip.dvc
+├── uec_food256_dataset.zip.dvc
+```
+
+---
+
+### Step 2: Doneness Dataset
+
+A complementary dataset was created to help detect **cooking stages** (raw, boiled, fried, etc.) for **meat, chicken, eggs, and grains**.
+This dataset is used to train the model to recognize **doneness levels** for proteins and grains, which is important for cooking guidance and food safety.
+
+The dataset is stored in **DVC** and can be accessed locally via:
+
+```
+data/raw/photos.dvc
+```
+
+**Content overview:**
+
+* **Chicken:** raw, boiled, fried
+* **Meat:** raw, partially cooked
+* **Eggs:** raw, boiled, scrambled, fried
+* **Grains:** rice, pasta, buckwheat at different cooking stages
+
+**Usage:**
+
+* Can be loaded by preprocessing scripts to generate train/validation splits.
+* Supports model training for doneness classification alongside the main filtered food dataset.
+
+📁 Link: [Doneness Dataset (Google Drive)](https://drive.google.com/drive/folders/10F2WjIbj8SIc5qbZZ0bpM4kJnTf64M98?usp=sharing)
+
+---
+
+### Summary
+
+* Filters and structures raw food images for 14 key categories.
+* Applies augmentation and tensor conversion for efficient training.
+* Includes a separate dataset for doneness classification.
+
+
+
 ## 🎥 Video Data — Preprocessing & Storage Guide
 
 This section describes how to prepare and manage the **video data** used in the B-Chef project.
