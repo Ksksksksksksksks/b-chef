@@ -37,22 +37,22 @@ filtered_food = filter_food101(food101, food_labels)
 base_dir = os.path.dirname(__file__)  # src/preprocess
 output_dir = os.path.join(project_root, "data/processed/images")
 os.makedirs(output_dir, exist_ok=True)
-zip_path = os.path.join(output_dir, "filtered_food_dataset.zip")
-dvc_path = zip_path + ".dvc"
+food101_zip_path = os.path.join(output_dir, "filtered_food_dataset.zip")
+food101_dvc_path = food101_zip_path + ".dvc"
 
-# Config (limit to 75 images per category, like MAX_CLIPS_PER_CATEGORY)
+# Config (limit to 500 images per category)
 MAX_IMAGES_PER_CATEGORY = 500
 
 # Track how many images we've processed per category
 category_counts = defaultdict(int)
 
-# Create ZIP with filtered images
-if os.path.exists(zip_path) or os.path.exists(dvc_path):
-    print(f"Skipping {os.path.basename(zip_path)} (already exists)")
+# Create ZIP with filtered Food101 images
+if os.path.exists(food101_zip_path) or os.path.exists(food101_dvc_path):
+    print(f"Skipping {os.path.basename(food101_zip_path)} (already exists)")
 else:
-    print(f"Processing {os.path.basename(zip_path)}")
+    print(f"Processing {os.path.basename(food101_zip_path)}")
     with tempfile.TemporaryDirectory() as tmp_dir:
-        # Organize images by category
+        # Organize Food101 images by category
         category_dirs = defaultdict(list)
         for i, example in enumerate(filtered_food):
             category = example["category"].replace(' ', '_')
@@ -65,19 +65,94 @@ else:
                 except Exception as e:
                     print(f"Skipping image {i} for {category} due to error: {e}")
 
-        # Create ZIP
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # Create ZIP for Food101
+        with zipfile.ZipFile(food101_zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
             for category, paths in category_dirs.items():
                 for path in paths:
                     zf.write(path, os.path.join(category, os.path.basename(path)))
 
         # Add to DVC and remove local ZIP
         try:
-            subprocess.run(["dvc", "add", zip_path], check=True)
-            os.remove(zip_path)
-            print(f"Added to DVC and removed local file: {os.path.basename(zip_path)}\n")
+            subprocess.run(["dvc", "add", food101_zip_path], check=True)
+            os.remove(food101_zip_path)
+            print(f"Added to DVC and removed local file: {os.path.basename(food101_zip_path)}\n")
         except subprocess.CalledProcessError as e:
-            print(f"Error adding {os.path.basename(zip_path)} to DVC: {e}\n")
+            print(f"Error adding {os.path.basename(food101_zip_path)} to DVC: {e}\n")
+            if os.path.exists(food101_zip_path):
+                os.remove(food101_zip_path)
+
+# Download and process UEC FOOD 256
+uec_zip_path = os.path.join(project_root, "data/raw/food256.zip")
+if not os.path.exists(uec_zip_path):
+    print("Downloading UEC FOOD 256 (~3GB)...")
+    url = "http://foodcam.mobi/dataset256.zip"
+    try:
+        r = requests.get(url, stream=True, timeout=30)
+        r.raise_for_status()
+        os.makedirs(os.path.dirname(uec_zip_path), exist_ok=True)
+        with open(uec_zip_path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                f.write(chunk)
+        print("Download complete.")
+    except requests.exceptions.RequestException as e:
+        print(f"Download failed: {e}. Please download http://foodcam.mobi/dataset256.zip manually and place it in {os.path.dirname(uec_zip_path)}.")
+        exit(1)
+
+uec_zip_output = os.path.join(output_dir, "uec_food256_dataset.zip")
+uec_dvc_path = uec_zip_output + ".dvc"
+
+if os.path.exists(uec_zip_output) or os.path.exists(uec_dvc_path):
+    print(f"Skipping {os.path.basename(uec_zip_output)} (already exists)")
+else:
+    print(f"Processing {os.path.basename(uec_zip_output)}")
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        # Parse category.txt from ZIP
+        with zipfile.ZipFile(uec_zip_path, 'r') as zf:
+            category_txt = zf.read("UECFOOD256/category.txt").decode('utf-8').splitlines()
+            class_id_to_name = {int(line.split()[0]): ' '.join(line.split()[1:]) for line in category_txt[1:] if line.strip()}
+
+            # Define the specific folders to process
+            selected_folders = {1, 9, 27, 40, 45, 58, 61, 155}
+            relevant_categories = {name.replace(' ', '_') for name in class_id_to_name.values() if name in [food.replace('_', ' ') for foods in food_labels.values() for food in foods]}
+
+            # Process images from selected folders
+            category_dirs = defaultdict(list)
+            for class_id, name in class_id_to_name.items():
+                if class_id not in selected_folders or name not in [food.replace('_', ' ') for foods in food_labels.values() for food in foods]:
+                    continue
+                category = name.replace(' ', '_')
+                if category_counts[category] >= MAX_IMAGES_PER_CATEGORY:
+                    continue
+
+                folder = str(class_id)
+                files = [n for n in zf.namelist() if n.startswith(f"UECFOOD256/{folder}/") and n.endswith('.jpg')]
+                files = files[:MAX_IMAGES_PER_CATEGORY - category_counts[category]]  # Limit remaining
+
+                for file in files:
+                    basename = os.path.basename(file)
+                    out_name = f"uec_{basename}"
+                    out_path = os.path.join(tmp_dir, out_name)
+
+                    with zf.open(file) as img_file, open(out_path, "wb") as f:
+                        f.write(img_file.read())
+                    category_dirs[category].append(out_path)
+                    category_counts[category] += 1
+
+            # Create ZIP for UEC FOOD 256
+            with zipfile.ZipFile(uec_zip_output, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for category, paths in category_dirs.items():
+                    for path in paths:
+                        zf.write(path, os.path.join(category, os.path.basename(path)))
+
+            # Add to DVC and remove local ZIP
+            try:
+                subprocess.run(["dvc", "add", uec_zip_output], check=True)
+                os.remove(uec_zip_output)
+                print(f"Added to DVC and removed local file: {os.path.basename(uec_zip_output)}\n")
+            except subprocess.CalledProcessError as e:
+                print(f"Error adding {os.path.basename(uec_zip_output)} to DVC: {e}\n")
+                if os.path.exists(uec_zip_output):
+                    os.remove(uec_zip_output)
 
 print("\n=== Summary ===")
 for cat, count in category_counts.items():
