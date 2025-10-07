@@ -7,6 +7,6 @@ put on plate
 stir
 put on cutting-board
 pour
-put in pan/pot
+put in pan-pot
 open egg
 mix
