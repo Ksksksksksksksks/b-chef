@@ -1,0 +1,10 @@
+{
+  "title": "B-Chef Preprocessed Video Tensors",
+  "id": "khudiakovakseniia/b-chef-tensors",
+  "licenses": [
+    {
+      "name": "CC BY-NC-SA 4.0"
+    }
+  ],
+  "description": "This dataset contains preprocessed video tensors (.pt format) for the B-Chef project. Each tensor corresponds to a cooking action clip, pre-extracted and ready for SlowFast training. The dataset also includes train, validation, and test CSV files with filenames and action labels."
+}
