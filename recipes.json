@@ -1,100 +1,100 @@
 {
-  "яичница": {
-    "name": "Яичница",
-    "time": "5 минут",
-    "ingredients": ["яйца — 2 шт.", "масло сливочное — 20 г", "соль", "перец"],
+  "fried eggs": {
+    "name": "Fried Eggs",
+    "time": "5 minutes",
+    "ingredients": ["eggs — 2 pcs", "butter — 20 g", "salt", "pepper"],
     "steps": [
-      "Разогрей сковородку на среднем огне.",
-      "Растопи немного масла.",
-      "Разбей яйца в сковороду.",
-      "Посоли, поперчи по вкусу.",
-      "Жарь до нужной степени готовности."
+      "Heat the frying pan over medium heat.",
+      "Melt a little butter.",
+      "Crack the eggs into the pan.",
+      "Add salt and pepper to taste.",
+      "Fry until the desired doneness."
     ]
   },
-  "макароны": {
-    "name": "Макароны",
-    "time": "15 минут",
-    "ingredients": ["макароны — 200 г", "вода — 1 л", "соль", "масло"],
+  "pasta": {
+    "name": "Pasta",
+    "time": "15 minutes",
+    "ingredients": ["pasta — 200 g", "water — 1 L", "salt", "oil"],
     "steps": [
-      "Налей воду в кастрюлю и доведи до кипения.",
-      "Посоли воду.",
-      "Добавь макароны и вари 7–10 минут до мягкости.",
-      "Слей воду и добавь немного масла.",
-      "Перемешай и подавай к столу."
+      "Pour water into a pot and bring to a boil.",
+      "Add salt to the water.",
+      "Add the pasta and cook for 7–10 minutes until tender.",
+      "Drain the water and add a bit of oil.",
+      "Mix well and serve."
     ]
   },
-  "рис": {
-    "name": "Варёный рис",
-    "time": "20 минут",
-    "ingredients": ["рис — 1 стакан", "вода — 2 стакана", "соль", "масло"],
+  "rice": {
+    "name": "Boiled Rice",
+    "time": "20 minutes",
+    "ingredients": ["rice — 1 cup", "water — 2 cups", "salt", "butter"],
     "steps": [
-      "Промой рис под холодной водой до прозрачности.",
-      "Вскипяти воду в кастрюле, добавь соль.",
-      "Засыпь рис и вари на слабом огне 15–20 минут под крышкой.",
-      "Когда вода впитается, добавь немного масла и перемешай.",
-      "Дай настояться под крышкой 5 минут."
+      "Rinse the rice under cold water until the water runs clear.",
+      "Boil water in a pot and add salt.",
+      "Add the rice and cook on low heat for 15–20 minutes with the lid on.",
+      "When the water is absorbed, add a bit of butter and mix.",
+      "Let it sit covered for 5 minutes."
     ]
   },
-  "гречка": {
-    "name": "Гречневая каша",
-    "time": "20 минут",
-    "ingredients": ["гречка — 1 стакан", "вода — 2 стакана", "соль", "масло"],
+  "buckwheat": {
+    "name": "Buckwheat Porridge",
+    "time": "20 minutes",
+    "ingredients": ["buckwheat — 1 cup", "water — 2 cups", "salt", "butter"],
     "steps": [
-      "Промой гречку под холодной водой.",
-      "Доведи воду до кипения, добавь соль.",
-      "Засыпь гречку и вари 15–20 минут на медленном огне под крышкой.",
-      "Когда вода выпарится, добавь масло и перемешай.",
-      "Дай настояться 5 минут под крышкой."
+      "Rinse the buckwheat under cold water.",
+      "Bring the water to a boil and add salt.",
+      "Add the buckwheat and cook for 15–20 minutes on low heat with the lid on.",
+      "When the water evaporates, add butter and mix.",
+      "Let it sit covered for 5 minutes."
     ]
   },
-  "яйца": {
-    "name": "Варёные яйца",
-    "time": "10 минут",
-    "ingredients": ["яйца — 2–4 шт.", "вода", "соль (по желанию)"],
+  "boiled eggs": {
+    "name": "Boiled Eggs",
+    "time": "10 minutes",
+    "ingredients": ["eggs — 2–4 pcs", "water", "salt (optional)"],
     "steps": [
-      "Положи яйца в кастрюлю и залей холодной водой.",
-      "Поставь на средний огонь и доведи до кипения.",
-      "Вари 4–5 минут — всмятку, 8–10 минут — вкрутую.",
-      "Аккуратно слей горячую воду и залей яйца холодной.",
-      "Очисти и подавай!"
+      "Place the eggs in a pot and cover with cold water.",
+      "Put on medium heat and bring to a boil.",
+      "Cook for 4–5 minutes for soft-boiled or 8–10 minutes for hard-boiled eggs.",
+      "Carefully drain the hot water and add cold water.",
+      "Peel and serve!"
     ]
   },
-  "жареное мясо": {
-    "name": "Жареное мясо",
-    "time": "25 минут",
-    "ingredients": ["мясо — 300 г", "масло растительное — 2 ст. ложки", "соль", "перец", "специи по вкусу"],
+  "fried meat": {
+    "name": "Fried Meat",
+    "time": "25 minutes",
+    "ingredients": ["meat — 300 g", "vegetable oil — 2 tbsp", "salt", "pepper", "spices to taste"],
     "steps": [
-      "Нарежь мясо небольшими кусочками.",
-      "Разогрей сковородку с маслом.",
-      "Выложи мясо и обжаривай на сильном огне до румяной корочки.",
-      "Убавь огонь, посоли, поперчи, добавь специи.",
-      "Накрой крышкой и готовь ещё 10–15 минут до мягкости."
+      "Cut the meat into small pieces.",
+      "Heat a frying pan with oil.",
+      "Add the meat and fry over high heat until golden brown.",
+      "Reduce the heat, add salt, pepper, and spices.",
+      "Cover with a lid and cook for another 10–15 minutes until tender."
     ]
   },
-  "тушёное мясо": {
-    "name": "Тушёное мясо",
-    "time": "60 минут",
-    "ingredients": ["мясо — 500 г", "лук — 1 шт.", "морковь — 1 шт.", "масло", "соль", "перец", "вода или бульон — 200 мл"],
+  "stewed meat": {
+    "name": "Stewed Meat",
+    "time": "60 minutes",
+    "ingredients": ["meat — 500 g", "onion — 1 pc", "carrot — 1 pc", "oil", "salt", "pepper", "water or broth — 200 ml"],
     "steps": [
-      "Нарежь мясо кубиками.",
-      "Обжарь мясо в кастрюле или глубокой сковороде до лёгкой корочки.",
-      "Добавь нарезанный лук и морковь, жарь ещё 5 минут.",
-      "Посоли, поперчи, добавь немного воды или бульона.",
-      "Накрой крышкой и туши на слабом огне 40–50 минут до мягкости.",
-      "При необходимости добавь специи по вкусу."
+      "Cut the meat into cubes.",
+      "Fry the meat in a pot or deep pan until lightly browned.",
+      "Add chopped onion and carrot, fry for another 5 minutes.",
+      "Add salt, pepper, and a bit of water or broth.",
+      "Cover and simmer over low heat for 40–50 minutes until tender.",
+      "Add extra spices if needed."
     ]
   },
-  "жареная картошка": {
-    "name": "Жареная картошка",
-    "time": "25 минут",
-    "ingredients": ["Картофель", "Растительное масло", "Соль", "Лук (по желанию)"],
+  "fried potatoes": {
+    "name": "Fried Potatoes",
+    "time": "25 minutes",
+    "ingredients": ["potatoes", "vegetable oil", "salt", "onion (optional)"],
     "steps": [
-        "Очисти и нарежь картошку тонкими дольками или брусочками.",
-        "Разогрей сковороду с растительным маслом.",
-        "Выложи картошку и жарь на среднем огне, не накрывая крышкой, 10–15 минут.",
-        "Периодически помешивай, чтобы не пригорело.",
-        "Добавь соль и, если хочешь, немного лука.",
-        "Когда картошка станет золотистой и мягкой — готово!"
+      "Peel and cut the potatoes into thin slices or sticks.",
+      "Heat a frying pan with vegetable oil.",
+      "Add the potatoes and fry over medium heat without covering for 10–15 minutes.",
+      "Stir occasionally to prevent burning.",
+      "Add salt and, if you like, some onion.",
+      "When the potatoes are golden and soft — they’re ready!"
     ]
   }
 }
