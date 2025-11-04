@@ -227,7 +227,7 @@ def compute_metrics(eval_pred):
 # Training arguments with label smoothing to reduce noisy data impact
 training_args = TrainingArguments(
     output_dir="./food_finetune",
-    num_train_epochs=3,  # Small for demo; increase for real training
+    num_train_epochs=5,
     per_device_train_batch_size=16,
     per_device_eval_batch_size=16,
     eval_strategy="epoch",  # Changed from evaluation_strategy
