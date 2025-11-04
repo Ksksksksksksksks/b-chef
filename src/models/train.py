@@ -1,193 +1,283 @@
-import os
-import zipfile
-import tempfile
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset
-from torchvision import transforms
-from transformers import AutoImageProcessor, AutoModelForImageClassification
-from torch.utils.data import random_split
-import dvc.api
+import requests
 from PIL import Image
+import torch
+from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
+from transformers import CLIPProcessor, CLIPModel
+from transformers import AutoImageProcessor, AutoModelForImageClassification
+from io import BytesIO
+
+# Load models
+# Food classification model fine-tuned on Food-101
+food_processor = AutoImageProcessor.from_pretrained("eslamxm/vit-base-food101")
+food_model = AutoModelForImageClassification.from_pretrained("eslamxm/vit-base-food101")
+
+# CLIP for doneness (use larger model for better quality)
+clip_model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14")
+clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
+
+# GroundingDINO for object detection (base for better quality)
+dino_processor = AutoProcessor.from_pretrained("IDEA-Research/grounding-dino-base")
+dino_model = AutoModelForZeroShotObjectDetection.from_pretrained("IDEA-Research/grounding-dino-base")
+
+# General food categories and their doneness levels
+food_doneness_map = {
+    'steak': ['raw steak', 'rare steak', 'medium rare steak', 'medium steak', 'medium well steak', 'well done steak'],
+    'chicken': ['raw chicken', 'undercooked chicken', 'cooked chicken', 'overcooked chicken'],
+    'fish': ['raw fish', 'undercooked fish', 'cooked fish', 'overcooked fish'],
+    'eggs': ['raw eggs', 'soft boiled eggs', 'hard boiled eggs', 'fried eggs', 'scrambled eggs', 'overcooked eggs'],
+    'vegetables': ['raw vegetables', 'steamed vegetables', 'roasted vegetables', 'fried vegetables', 'overcooked vegetables'],
+}
+
+# Container classes
+container_classes = "frying pan . plate . bowl . cutting board . oven tray . pot"
+
+# Mapping from food-101 labels to general categories
+food101_to_general = {
+    'steak': 'steak',
+    'filet_mignon': 'steak',
+    'prime_rib': 'steak',
+    'grilled_salmon': 'fish',
+    'fish_and_chips': 'fish',
+    'tuna_tartare': 'fish',
+    'sashimi': 'fish',
+    'chicken_curry': 'chicken',
+    'chicken_quesadilla': 'chicken',
+    'chicken_wings': 'chicken',
+    'fried_egg': 'eggs',
+    'deviled_eggs': 'eggs',
+    'eggs_benedict': 'eggs',
+    'omelette': 'eggs',
+    'beet_salad': 'vegetables',
+    'caesar_salad': 'vegetables',
+    'caprese_salad': 'vegetables',
+    'greek_salad': 'vegetables',
+}
+
+def get_general_food(food101_label):
+    return food101_to_general.get(food101_label, 'unknown')
+
+def recognize_food(image):
+    """Recognize specific food using fine-tuned model on Food-101."""
+    inputs = food_processor(image, return_tensors="pt")
+    with torch.no_grad():
+        logits = food_model(**inputs).logits
+    predicted_id = logits.argmax(-1).item()
+    food101_label = food_model.config.id2label[predicted_id]
+    general_food = get_general_food(food101_label)
+    return general_food, food101_label  # Return both general and specific
+
+def detect_and_crop(image, prompt):
+    """Detect object using GroundingDINO and crop the image."""
+    inputs = dino_processor(images=image, text=prompt, return_tensors="pt")
+    with torch.no_grad():
+        outputs = dino_model(**inputs)
+    target_sizes = torch.tensor([image.size[::-1]])
+    results = dino_processor.post_process_grounded_object_detection(
+        outputs,
+        inputs['input_ids'],
+        target_sizes=target_sizes,
+        threshold=0.35
+    )[0]
+
+    if len(results["boxes"]) == 0:
+        return image  # No detection, return original
+
+    # Get the box with highest score
+    max_score_idx = results["scores"].argmax()
+    box = results["boxes"][max_score_idx].cpu().numpy().astype(int)
+    cropped = image.crop((box[0], box[1], box[2], box[3]))
+    return cropped
+
+def recognize_doneness(cropped_image, food):
+    """Recognize doneness using CLIP on cropped image."""
+    if food not in food_doneness_map:
+        return "unknown"
+
+    doneness_levels = food_doneness_map[food]
+    texts = [f"a photo of {level}" for level in doneness_levels]
+    inputs = clip_processor(text=texts, images=cropped_image, return_tensors="pt", padding=True)
+    with torch.no_grad():
+        outputs = clip_model(**inputs)
+    logits_per_image = outputs.logits_per_image
+    probs = logits_per_image.softmax(dim=1)
+    predicted_id = probs.argmax().item()
+    return doneness_levels[predicted_id]
+
+def recognize_container(image):
+    """Recognize container using GroundingDINO."""
+    inputs = dino_processor(images=image, text=container_classes, return_tensors="pt")
+    with torch.no_grad():
+        outputs = dino_model(**inputs)
+    target_sizes = torch.tensor([image.size[::-1]])
+    results = dino_processor.post_process_grounded_object_detection(
+        outputs,
+        inputs['input_ids'],
+        target_sizes=target_sizes,
+        threshold=0.35
+    )[0]
+
+    if len(results["labels"]) == 0:
+        return "unknown"
+
+    max_score_idx = results["scores"].argmax()
+    container = results["labels"][max_score_idx]
+    return container
+
+def generate_recommendation(food, doneness, container):
+    """Generate cooking recommendation."""
+    if doneness.startswith(('raw', 'undercooked')):
+        return f"Your {food} looks {doneness} on {container}. Continue cooking to reach desired doneness."
+    elif doneness.startswith(('overcooked', 'well done', 'hard boiled')):
+        return f"Your {food} looks {doneness}. Be careful not to overcook further to avoid dryness."
+    else:
+        return f"Detected {food} that is {doneness} on {container}. Continue cooking as needed."
+
+def process_image(image_path_or_url):
+    """Main function to process the image."""
+    if image_path_or_url.startswith("http"):
+        image = Image.open(BytesIO(requests.get(image_path_or_url).content))
+    else:
+        image = Image.open(image_path_or_url)
+
+    # Recognize food
+    general_food, specific_food = recognize_food(image)
+    if general_food == 'unknown':
+        return {"food": specific_food, "doneness": "unknown", "container": "unknown", "recommendation": "Unknown food type."}
+
+    # Detect and crop the food item
+    cropped_image = detect_and_crop(image, specific_food)  # Use specific for better detection
+
+    # Recognize doneness on cropped
+    doneness = recognize_doneness(cropped_image, general_food)
+
+    # Recognize container
+    container = recognize_container(image)
+
+    # Generate recommendation
+    recommendation = generate_recommendation(specific_food, doneness, container)
+
+    return {
+        "food": specific_food,
+        "doneness": doneness,
+        "container": container,
+        "recommendation": recommendation
+    }
+
+# Example usage
+# result = process_image("path/to/image.jpg")
+# print(result)
+
+"""### Fine-Tuning the Food Classification Model with Label Smoothing to Reduce Noisy Data Impact
+
+Here, we fine-tune the ViT model on the Food-101 dataset. Label smoothing (factor=0.1) is enabled to handle potential noisy labels in the data. We also add simple data augmentations for robustness to noisy inputs (e.g., blur).
+"""
+
+from datasets import load_dataset
+from transformers import Trainer, TrainingArguments
+from transformers import DefaultDataCollator
 import numpy as np
-from collections import defaultdict  # Added import for defaultdict
-import evaluate
+from sklearn.metrics import accuracy_score, classification_report
+import matplotlib.pyplot as plt
+from torchvision.transforms import RandomResizedCrop, RandomHorizontalFlip, GaussianBlur, Compose
 
-# === Configuration ===
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-DATA_DIR = os.path.join(PROJECT_ROOT, "data/processed/images")
-MODEL_NAME = "dwililiya/food101-model-classification"
-NUM_EPOCHS = 10
-BATCH_SIZE = 32
-LEARNING_RATE = 0.001
-IMG_SIZE = 224
-OUTPUT_DIR = os.path.join(PROJECT_ROOT, "models/fine_tuned_food_model")
-NUM_CLASSES = 14  # Your custom classes (meat, eggs, grains)
-PUSH_TO_HUB = False  # Set to True to push to Hugging Face (requires login)
+# Load Food-101 dataset
+dataset = load_dataset("food101")
 
-# === Data Augmentations (to avoid overfitting) ===
-train_transforms = transforms.Compose([
-    transforms.Resize((256, 256)),
-    transforms.RandomResizedCrop(IMG_SIZE, scale=(0.8, 1.0)),  # Random zoom/crop
-    transforms.RandomRotation(15),  # Rotation up to 15 degrees
-    transforms.RandomHorizontalFlip(p=0.5),  # Horizontal flip
-    transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),  # Color adjustments
-    transforms.RandomPerspective(distortion_scale=0.1, p=0.5),  # Perspective warp
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+# For demo, use a small subset to speed up (remove .shuffle().select() for full dataset)
+dataset["train"] = dataset["train"].shuffle(seed=42).select(range(2000))
+dataset["validation"] = dataset["validation"].shuffle(seed=42).select(range(500))
+
+# Define augmentations for training (includes Gaussian blur to handle noisy/blurry inputs)
+train_augment = Compose([
+    RandomResizedCrop((food_processor.size['height'], food_processor.size['width'])),
+    RandomHorizontalFlip(),
+    GaussianBlur(kernel_size=(3, 3), sigma=(0.1, 2.0)),
 ])
 
-val_transforms = transforms.Compose([
-    transforms.Resize((256, 256)),
-    transforms.CenterCrop(IMG_SIZE),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
+# Preprocess function for train (with augmentations)
+def train_preprocess(examples):
+    images = [train_augment(img.convert("RGB")) for img in examples["image"]]
+    inputs = food_processor(images, return_tensors="pt")
+    examples["pixel_values"] = inputs["pixel_values"]
+    examples["labels"] = examples["label"]
+    return examples
 
-# === Custom Dataset Class with DVC ===
-class DVCFoodDataset(Dataset):
-    def __init__(self, zip_paths, max_images_per_category=500, transform=None):
-        self.transform = transform
-        self.max_images = max_images_per_category
-        self.category_to_images = defaultdict(list)  # Now properly defined
-        self.classes = set()
+# Preprocess function for eval (no augmentations)
+def eval_preprocess(examples):
+    images = [img.convert("RGB") for img in examples["image"]]
+    inputs = food_processor(images, return_tensors="pt")
+    examples["pixel_values"] = inputs["pixel_values"]
+    examples["labels"] = examples["label"]
+    return examples
 
-        for zip_path in zip_paths:
-            with dvc.api.open(zip_path, mode='rb') as zip_file:
-                with zipfile.ZipFile(zip_file) as zf:
-                    for file_info in zf.infolist():
-                        if file_info.filename.endswith('.jpg') and '/' in file_info.filename:
-                            category = file_info.filename.split('/')[0]
-                            if category:  # Ensure it's a category folder
-                                self.classes.add(category)
-                                if len(self.category_to_images[category]) < max_images_per_category:
-                                    self.category_to_images[category].append(file_info)
+# Apply preprocessing
+dataset["train"] = dataset["train"].map(train_preprocess, batched=True, batch_size=16)
+dataset["validation"] = dataset["validation"].map(eval_preprocess, batched=True, batch_size=16)
 
-        self.classes = sorted(list(self.classes))
-        self.class_to_idx = {cls: i for i, cls in enumerate(self.classes)}
+# Remove unnecessary columns
+dataset = dataset.remove_columns(["image"])
 
-    def __len__(self):
-        return sum(min(len(imgs), self.max_images) for imgs in self.category_to_images.values())
+# Define compute_metrics for accuracy (we'll add full classification report later)
+def compute_metrics(eval_pred):
+    logits, labels = eval_pred
+    predictions = np.argmax(logits, axis=-1)
+    acc = accuracy_score(labels, predictions)
+    return {"accuracy": acc}
 
-    def __getitem__(self, idx):
-        # Map idx to category and image index
-        cumulative_size = 0
-        for category, images in self.category_to_images.items():
-            category_size = min(len(images), self.max_images)
-            if idx < cumulative_size + category_size:
-                img_idx = idx - cumulative_size
-                file_info = images[img_idx]
-                break
-            cumulative_size += category_size
-
-        with dvc.api.open(os.path.join(DATA_DIR, f"{os.path.basename(file_info.filename).split('.')[0]}.zip.dvc")) as zip_file:
-            with zipfile.ZipFile(zip_file) as zf:
-                with zf.open(file_info) as img_file:
-                    image = Image.open(img_file).convert('RGB')
-                    if self.transform:
-                        image = self.transform(image)
-                    label = self.class_to_idx[category]
-                    return image, label
-
-# === Load and Split Dataset ===
-zip_paths = [
-    os.path.join(DATA_DIR, "filtered_food_dataset.zip"),
-    os.path.join(DATA_DIR, "uec_food256_dataset.zip")
-]
-full_dataset = DVCFoodDataset(zip_paths, max_images_per_category=500, transform=None)
-train_size = int(0.8 * len(full_dataset))
-val_size = len(full_dataset) - train_size
-train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
-
-train_dataset.dataset.transform = train_transforms
-val_dataset.dataset.transform = val_transforms
-
-train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
-val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
-
-print(f"Dataset loaded: {len(train_dataset)} train samples, {len(val_dataset)} val samples")
-print(f"Classes: {full_dataset.classes}")
-
-# === Load Model ===
-processor = AutoImageProcessor.from_pretrained(MODEL_NAME)
-model = AutoModelForImageClassification.from_pretrained(
-    MODEL_NAME,
-    num_labels=NUM_CLASSES,
-    ignore_mismatched_sizes=True
+# Training arguments with label smoothing to reduce noisy data impact
+training_args = TrainingArguments(
+    output_dir="./food_finetune",
+    num_train_epochs=3,  # Small for demo; increase for real training
+    per_device_train_batch_size=16,
+    per_device_eval_batch_size=16,
+    eval_strategy="epoch",  # Changed from evaluation_strategy
+    save_strategy="epoch",
+    learning_rate=2e-5,
+    weight_decay=0.01,
+    label_smoothing_factor=0.1,  # Key: Reduces impact of noisy labels
+    load_best_model_at_end=True,
+    metric_for_best_model="accuracy",
+    report_to="none",  # Disable logging to external services
 )
 
-# === Training Setup ===
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model.to(device)
+# Initialize Trainer
+trainer = Trainer(
+    model=food_model,
+    args=training_args,
+    train_dataset=dataset["train"],
+    eval_dataset=dataset["validation"],
+    data_collator=DefaultDataCollator(return_tensors="pt"),
+    compute_metrics=compute_metrics,
+)
 
-optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
-criterion = nn.CrossEntropyLoss()
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3)
+# Fine-tune the model
+trainer.train()
 
-# Metrics
-accuracy_metric = evaluate.load("accuracy")
+history = trainer.state.log_history
 
-def train_epoch(model, loader, optimizer, criterion, device):
-    model.train()
-    running_loss = 0.0
-    all_preds, all_labels = [], []
-    for images, labels in loader:
-        images, labels = images.to(device), labels.to(device)
-        optimizer.zero_grad()
-        outputs = model(images).logits
-        loss = criterion(outputs, labels)
-        loss.backward()
-        optimizer.step()
-        running_loss += loss.item()
-        preds = torch.argmax(outputs, dim=1)
-        all_preds.extend(preds.cpu().numpy())
-        all_labels.extend(labels.cpu().numpy())
-    acc = accuracy_metric.compute(predictions=all_preds, references=all_labels)['accuracy']
-    return running_loss / len(loader), acc
+epochs = [entry['epoch'] for entry in history if 'loss' in entry]
+train_loss = [entry['loss'] for entry in history if 'loss' in entry]
+val_loss = [entry['eval_loss'] for entry in history if 'eval_loss' in entry]
+train_acc = [entry['train_accuracy'] for entry in history if 'train_accuracy' in entry]  # If tracked; else use eval
+val_acc = [entry['eval_accuracy'] for entry in history if 'eval_accuracy' in entry]
 
-def val_epoch(model, loader, criterion, device):
-    model.eval()
-    running_loss = 0.0
-    all_preds, all_labels = [], []
-    with torch.no_grad():
-        for images, labels in loader:
-            images, labels = images.to(device), labels.to(device)
-            outputs = model(images).logits
-            loss = criterion(outputs, labels)
-            running_loss += loss.item()
-            preds = torch.argmax(outputs, dim=1)
-            all_preds.extend(preds.cpu().numpy())
-            all_labels.extend(labels.cpu().numpy())
-    acc = accuracy_metric.compute(predictions=all_preds, references=all_labels)['accuracy']
-    return running_loss / len(loader), acc
+plt.figure(figsize=(10, 5))
+plt.plot(epochs, train_loss, label='loss', color='blue')
+plt.plot(epochs, val_loss, label='val_loss', color='green')
+if train_acc:
+    plt.plot(epochs, train_acc, label='binary_accuracy', color='orange')
+plt.plot(epochs, val_acc, label='val_binary_accuracy', color='red')
+plt.xlabel('Epochs')
+plt.ylabel('Metrics')
+plt.title('Training and Validation Metrics')
+plt.legend()
+plt.show()
 
-# === Training Loop ===
-best_val_acc = 0.0
-for epoch in range(NUM_EPOCHS):
-    train_loss, train_acc = train_epoch(model, train_loader, optimizer, criterion, device)
-    val_loss, val_acc = val_epoch(model, val_loader, criterion, device)
-    scheduler.step(val_loss)
-    print(f"Epoch {epoch+1}/{NUM_EPOCHS}: Train Loss={train_loss:.4f}, Train Acc={train_acc:.4f}, Val Loss={val_loss:.4f}, Val Acc={val_acc:.4f}")
-    if val_acc > best_val_acc:
-        best_val_acc = val_acc
-        os.makedirs(OUTPUT_DIR, exist_ok=True)
-        torch.save(model.state_dict(), os.path.join(OUTPUT_DIR, "best_model.pth"))
-        print(f"New best model saved with Val Acc: {val_acc:.4f}")
+predictions = trainer.predict(dataset["validation"])
+preds = np.argmax(predictions.predictions, axis=-1)
+labels = predictions.label_ids
+target_names = [food_model.config.id2label[i] for i in range(len(food_model.config.id2label))]
 
-print(f"Training complete. Best Val Acc: {best_val_acc:.4f}")
-
-# === Save Model ===
-model.save_pretrained(OUTPUT_DIR)
-processor.save_pretrained(OUTPUT_DIR)
-
-if PUSH_TO_HUB:
-    model.push_to_hub("your-username/fine-tuned-custom-food-model")
-    processor.push_to_hub("your-username/fine-tuned-custom-food-model")
-
-# === Inference Example ===
-def load_model(model_path=OUTPUT_DIR):
-    model = AutoModelForImageClassification.from_pretrained(model_path, num_labels=NUM_CLASSES)
-    processor = AutoImageProcessor.from_pretrained(model_path)
-    model.eval()
-    return model, processor
+report = classification_report(labels, preds, target_names=target_names, digits=3)
+print("Classification Report of the Model Trained on Food-101:")
+print(report)
