@@ -258,26 +258,17 @@ history = trainer.state.log_history
 epochs = [entry['epoch'] for entry in history if 'loss' in entry]
 train_loss = [entry['loss'] for entry in history if 'loss' in entry]
 val_loss = [entry['eval_loss'] for entry in history if 'eval_loss' in entry]
-train_acc = [entry['train_accuracy'] for entry in history if 'train_accuracy' in entry]  # If tracked; else use eval
+train_acc = [entry['train_accuracy'] for entry in history if 'train_accuracy' in entry]
 val_acc = [entry['eval_accuracy'] for entry in history if 'eval_accuracy' in entry]
 
 plt.figure(figsize=(10, 5))
-plt.plot(epochs, train_loss, label='loss', color='blue')
+plt.plot(epochs, train_loss, label='trains_loss', color='blue')
 plt.plot(epochs, val_loss, label='val_loss', color='green')
 if train_acc:
-    plt.plot(epochs, train_acc, label='binary_accuracy', color='orange')
-plt.plot(epochs, val_acc, label='val_binary_accuracy', color='red')
+    plt.plot(epochs, train_acc, label='train_accuracy', color='orange')
+plt.plot(epochs, val_acc, label='val_accuracy', color='red')
 plt.xlabel('Epochs')
 plt.ylabel('Metrics')
 plt.title('Training and Validation Metrics')
 plt.legend()
 plt.show()
-
-predictions = trainer.predict(dataset["validation"])
-preds = np.argmax(predictions.predictions, axis=-1)
-labels = predictions.label_ids
-target_names = [food_model.config.id2label[i] for i in range(len(food_model.config.id2label))]
-
-report = classification_report(labels, preds, target_names=target_names, digits=3)
-print("Classification Report of the Model Trained on Food-101:")
-print(report)
