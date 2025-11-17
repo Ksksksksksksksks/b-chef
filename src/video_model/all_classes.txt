@@ -1,0 +1,25 @@
+baking cookies
+cooking chicken
+cooking egg
+cooking sausages
+cut_apart
+cut_dice
+cut_slices
+flipping pancake
+frying vegetables
+grate
+grinding meat
+making sushi
+mix
+open_egg
+peel
+pour
+put_in_bowl
+put_in_pan-pot
+put_on_cutting-board
+put_on_plate
+scrambling eggs
+setting table
+stir
+tossing salad
+washing dishes

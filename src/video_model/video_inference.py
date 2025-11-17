@@ -4,8 +4,12 @@ import torchvision
 from torchvision.transforms import *
 import cv2
 from pytorchvideo.models.hub import slowfast_r50
+from PIL import Image
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+with open("src/video_model/all_classes.txt", "r") as f:
+    all_classes = [line.strip() for line in f.readlines()]
 
 
 # =========================
@@ -14,30 +18,31 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 class SlowFastWithFeatures(nn.Module):
     def __init__(self, base_model, num_classes):
         super().__init__()
-        self.backbone = nn.Sequential(*list(base_model.children())[:-1])
-        self.pool = nn.AdaptiveAvgPool3d((1, 1, 1))
-        self.fc = base_model.fc
+        self.base_model = base_model
         self.num_classes = num_classes
+        in_features = base_model.blocks[-1].proj.in_features
+        base_model.blocks[-1].proj = nn.Linear(in_features, num_classes)
 
-    def forward(self, x):
-        feats = self.backbone(x)         # (N, C, T, H, W)
-        pooled = self.pool(feats)        # (N, C, 1,1,1)
-        pooled = pooled.flatten(1)       # (N, C)
-        logits = self.fc(pooled)         # (N, num_classes)
-        return feats, pooled, logits
+    def forward(self, inputs):
+        # inputs = [slow, fast]
+        return self.base_model(inputs)
 
 
 def load_video_model(lora_path: str, num_classes: int = 25):
+    print("[INFO] Loading SlowFast backbone...")
 
-    base = slowfast_r50(pretrained=True)
+    base = slowfast_r50(pretrained=False)
 
-    base.fc = nn.Linear(base.fc.in_features, num_classes)
+    print("[INFO] Base model loaded.")
 
     model = SlowFastWithFeatures(base, num_classes)
 
+    print(f"[INFO] Loading LoRA weights from {lora_path}...")
     state = torch.load(lora_path, map_location=DEVICE)
     model.load_state_dict(state, strict=False)
 
+    print("[INFO] Model ready.")
+    model.eval()
     return model.to(DEVICE).eval()
 
 
@@ -45,8 +50,12 @@ def load_video_model(lora_path: str, num_classes: int = 25):
 # 2. VIDEO PREPROCESSING
 # =========================
 def preprocess_video(path, num_frames=32):
+    print("[INFO] Preprocessing video...")
+
     cap = cv2.VideoCapture(path)
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    print(f"[INFO] Total frames: {total}")
+
     idxs = torch.linspace(0, total - 1, num_frames).long().tolist()
 
     frames = []
@@ -68,12 +77,16 @@ def preprocess_video(path, num_frames=32):
 
     cap.release()
 
+    print(f"[INFO] Collected frames: {len(frames)}")
+
     tf = Compose([
         Resize(256),
         CenterCrop(224),
         ToTensor(),
         Normalize([0.45]*3, [0.225]*3)
     ])
+
+    frames = [Image.fromarray(f) for f in frames]
 
     return torch.stack([tf(f) for f in frames])
 
@@ -82,10 +95,11 @@ def preprocess_video(path, num_frames=32):
 # 3. SLOWFAST INPUT PACK
 # =========================
 def pack_slowfast(frames, alpha=4):
-    fast = frames             # (T, C, H, W)
+    print("[INFO] Packing SlowFast inputs...")
+    fast = frames
     slow = frames[::alpha]
 
-    slow = slow.permute(1,0,2,3).unsqueeze(0)
+    slow = slow.permute(1,0,2,3).unsqueeze(0)  # [B,C,T,H,W]
     fast = fast.permute(1,0,2,3).unsqueeze(0)
 
     return [slow.to(DEVICE), fast.to(DEVICE)]
@@ -98,17 +112,19 @@ def run_inference(model, video_path, topk=5):
     frames = preprocess_video(video_path)
     inputs = pack_slowfast(frames)
 
+    print("[INFO] Running model inference...")
+
     with torch.no_grad():
-        feats, pooled, logits = model(inputs)
+        logits = model(inputs)
         probs = torch.softmax(logits, dim=1)[0]
+
+    print("[INFO] Inference complete.")
 
     vals, idxs = probs.topk(topk)
 
     return {
-        "features_raw": feats[0].cpu(),       # (C, T', H', W')
-        "features_vector": pooled[0].cpu(),   # (C,)
-        "logits": logits[0].cpu(),            # (num_classes,)
-        "probs": probs.cpu(),                 # (num_classes,)
+        "logits": logits[0].cpu(),
+        "probs": probs.cpu(),
         "topk_indices": idxs.cpu(),
         "topk_probs": vals.cpu(),
     }
@@ -118,11 +134,12 @@ def run_inference(model, video_path, topk=5):
 # 5. CLI MODE
 # =========================
 if __name__ == "__main__":
+
     import argparse
 
     parser = argparse.ArgumentParser()
     parser.add_argument("video")
-    parser.add_argument("--weights", default="best_lora_model.pth")
+    parser.add_argument("--weights", default="src/video_model/best_lora_model.pth")
     parser.add_argument("--topk", type=int, default=5)
     args = parser.parse_args()
 
@@ -131,4 +148,7 @@ if __name__ == "__main__":
 
     print("Top-k predictions:")
     for idx, pr in zip(out["topk_indices"], out["topk_probs"]):
-        print(f"{int(idx)}\t{float(pr):.4f}")
+        class_name = all_classes[int(idx)]
+        print(f"{int(idx)}\t{class_name}\t{float(pr):.4f}")
+
+
