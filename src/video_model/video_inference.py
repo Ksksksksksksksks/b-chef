@@ -4,6 +4,7 @@ import cv2
 from PIL import Image
 from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize
 from pytorchvideo.models.hub import slowfast_r50
+import torch.nn.functional as F
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -132,18 +133,68 @@ def pack_slowfast(frames, alpha=4):
     print(f"[LOG] Packed slow shape: {slow.shape}, fast shape: {fast.shape}")
     return [slow.to(DEVICE), fast.to(DEVICE)]
 
+# # =========================
+# # 3. INFERENCE
+# # =========================
+# def run_inference(model, video_path, topk=5):
+#     frames = preprocess_video(video_path)
+#     inputs = pack_slowfast(frames)
+#     with torch.no_grad():
+#         logits = model(inputs)
+#         probs = torch.softmax(logits, dim=1)[0]
+#     vals, idxs = probs.topk(topk)
+#     print(f"[LOG] Top-{topk} probabilities: {vals}")
+#     return {"logits": logits[0].cpu(), "probs": probs.cpu(), "topk_indices": idxs.cpu(), "topk_probs": vals.cpu()}
+
 # =========================
-# 3. INFERENCE
+# 3. INFERENCE (WINDOW-BASED)
 # =========================
+
+def sliding_windows(frames, window_size=32, stride=16):
+    windows = []
+    L = frames.shape[0]
+
+    for i in range(0, L - window_size + 1, stride):
+        windows.append(frames[i:i+window_size])
+
+    if not windows:
+        windows = [frames]
+
+    print(f"[LOG] Total windows: {len(windows)}")
+    return windows
+
+
 def run_inference(model, video_path, topk=5):
     frames = preprocess_video(video_path)
-    inputs = pack_slowfast(frames)
+
+    windows = sliding_windows(frames, window_size=32, stride=16)
+    all_logits = []
+
     with torch.no_grad():
-        logits = model(inputs)
-        probs = torch.softmax(logits, dim=1)[0]
-    vals, idxs = probs.topk(topk)
-    print(f"[LOG] Top-{topk} probabilities: {vals}")
-    return {"logits": logits[0].cpu(), "probs": probs.cpu(), "topk_indices": idxs.cpu(), "topk_probs": vals.cpu()}
+        for i, win in enumerate(windows):
+            inputs = pack_slowfast(win)
+            logits = model(inputs)              # shape: [1, num_classes]
+            all_logits.append(logits)
+
+            probs = F.softmax(logits, dim=1)[0]
+            vals, idxs = probs.topk(topk)
+            print(f"[LOG] Window {i}: top-{topk} probs = {vals.cpu().numpy()}, idx = {idxs.cpu().numpy()}")
+
+    final_logits = torch.stack(all_logits).mean(dim=0)   # [1, num_classes]
+    final_probs = F.softmax(final_logits, dim=1)[0]
+
+    vals, idxs = final_probs.topk(topk)
+
+    print(f"\n[LOG] Final averaged probabilities:")
+    print(final_probs.cpu().numpy())
+
+    return {
+        "logits": final_logits[0].cpu(),
+        "probs": final_probs.cpu(),
+        "topk_indices": idxs.cpu(),
+        "topk_probs": vals.cpu()
+    }
+
 
 # =========================
 # 4. CLI
@@ -165,4 +216,4 @@ if __name__ == "__main__":
 
     print("\nTop-k predictions:")
     for idx, pr in zip(out["topk_indices"], out["topk_probs"]):
-        print(f"{int(idx)}\t{all_classes[int(idx)]}\t{float(pr):.4f}")
+        print(f"{int(idx)}\t{all_classes[int(idx)]}\t{float(pr):.10f}")
