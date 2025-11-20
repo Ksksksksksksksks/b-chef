@@ -133,19 +133,6 @@ def pack_slowfast(frames, alpha=4):
     print(f"[LOG] Packed slow shape: {slow.shape}, fast shape: {fast.shape}")
     return [slow.to(DEVICE), fast.to(DEVICE)]
 
-# # =========================
-# # 3. INFERENCE
-# # =========================
-# def run_inference(model, video_path, topk=5):
-#     frames = preprocess_video(video_path)
-#     inputs = pack_slowfast(frames)
-#     with torch.no_grad():
-#         logits = model(inputs)
-#         probs = torch.softmax(logits, dim=1)[0]
-#     vals, idxs = probs.topk(topk)
-#     print(f"[LOG] Top-{topk} probabilities: {vals}")
-#     return {"logits": logits[0].cpu(), "probs": probs.cpu(), "topk_indices": idxs.cpu(), "topk_probs": vals.cpu()}
-
 # =========================
 # 3. INFERENCE (WINDOW-BASED)
 # =========================
