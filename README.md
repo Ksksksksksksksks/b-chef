@@ -21,7 +21,7 @@ It can speak in two tones:
 
 ---
 
-## 📝 Current Status
+## 📝 Previous Steps
 
 We have completed preprocessing of the photo datasets and set up the initial food state classification model:
 
@@ -38,16 +38,39 @@ We have completed preprocessing of the photo datasets and set up the initial foo
 ```    
 * Video Action Recognition
 
-  * Model: pre-trained SlowFast (training not started yet)
+  * Model: pre-trained SlowFast
   * Dataset: planned to be used via Kaggle, stored in:
 
 ```
     data/processed/video_dataset/tensors.7z.dvc
 ```
-This reflects the current stage: completed preprocessing for photos and initial setup for model training, while video model preparation is in progress.
-
+## Current Achievements
+- **Photo analysis** → recognizes 101+ foods, doneness level (raw → well-done/overcooked), container (pan, pot, plate, etc.)
+- **Video analysis** → recognizes 25 cooking actions (frying, boiling, chopping, stirring, etc.)
+- **Fusion of photo + video** → understands the exact step, e.g. "fry chicken", "boil egg", "chop onion"
+- Real-time feedback ("Your steak is medium-rare → flip it now", "You're burning the eggs!")
+- Works with both photos and short videos
 ---
-
+## Photo Model (Food + Doneness + Container)
+- Base: ViT-B/16 fine-tuned on Food-101 + custom doneness dataset
+- Doneness detection: CLIP zero-shot on cropped food (improved prompts)
+- Cropping & container detection: Grounding DINO
+Example output:
+```
+{'food': 'grilled_salmon', 'doneness': 'overcooked fish', 'container': 'frying pan', 'recommendation': 'Your grilled_salmon looks overcooked fish. Be careful not to overcook further to avoid dryness.'}
+```
+---
+## Video Action Recognition
+- Model: SlowFast-R50 + LoRA (25 kitchen actions)
+- Fully trained and accurate on real kitchen videos
+---
+## Unified Inference (What the bot actually uses)
+- Automatically detects image/video
+- Runs both models when needed
+- Fuses results → clean cooking step ("fry chicken", "stir pasta", etc.)
+- Includes overconfidence guard and many production fixes
+- Script: `inference/unified_inference.py` ← this will be the core of the bot's brain
+---
 ## 📂 Project Structure 
 ```
 /.dvc   # config for DVC storages
@@ -108,3 +131,4 @@ Please open an issue if you have suggestions — let’s cook together 🍳🔥
 ## 📜 License
 
 MIT License
+
