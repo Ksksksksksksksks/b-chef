@@ -55,6 +55,10 @@ We have completed preprocessing of the photo datasets and set up the initial foo
 - Base: ViT-B/16 fine-tuned on Food-101 + custom doneness dataset
 - Doneness detection: CLIP zero-shot on cropped food (improved prompts)
 - Cropping & container detection: Grounding DINO
+Example image for detection:
+
+![My Image](src/photo-model_scripts/test_images/my_test_folder/image9.jpg)
+
 Example output:
 ```
 {'food': 'grilled_salmon', 'doneness': 'overcooked fish', 'container': 'frying pan', 'recommendation': 'Your grilled_salmon looks overcooked fish. Be careful not to overcook further to avoid dryness.'}
