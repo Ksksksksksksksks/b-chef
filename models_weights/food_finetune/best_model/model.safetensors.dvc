@@ -1,0 +1,5 @@
+outs:
+- md5: 3b6e24936735e7f3f807849774d34c43
+  size: 343528508
+  hash: md5
+  path: model.safetensors

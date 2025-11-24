@@ -109,10 +109,10 @@ dvc remote modify yandex_video_datasets url s3://mybucket/video_datasets
 Once your remotes are configured, you can **pull or push** data as usual:
 
 ```bash
-# To fetch processed clips or models
+# To fetch processed clips or photo-model_scripts
 dvc pull -r yandex_video_datasets
 
-# To upload newly generated clips or models
+# To upload newly generated clips or photo-model_scripts
 dvc push -r yandex_video_datasets
 ```
 

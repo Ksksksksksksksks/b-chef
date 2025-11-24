@@ -1,6 +1,0 @@
-outs:
-- md5: c55c320763df8b2d95763330621e13e5.dir
-  size: 5497194117
-  nfiles: 40
-  hash: md5
-  path: food_finetune
