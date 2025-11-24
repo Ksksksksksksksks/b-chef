@@ -6,7 +6,7 @@ from transformers import CLIPProcessor, CLIPModel
 from transformers import AutoImageProcessor, AutoModelForImageClassification
 from io import BytesIO
 
-# Load models
+# Load photo-model_scripts
 # Food classification model fine-tuned on Food-101
 food_processor = AutoImageProcessor.from_pretrained("eslamxm/vit-base-food101")
 food_model = AutoModelForImageClassification.from_pretrained("eslamxm/vit-base-food101")
