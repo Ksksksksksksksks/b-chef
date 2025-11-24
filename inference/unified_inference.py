@@ -212,6 +212,26 @@ def run_inference(input_path: str, run_photo_on_frames: int = 5, topk_video: int
     if is_video(input_path):
         logger.info("Detected video -> running video model and photo model on frames")
         video_res = run_video_inference_wrapper(input_path, topk=topk_video)
+
+        # --- HACK: drop only the overconfident top-1 prediction ---
+        scores = video_res.get("scores", {})
+        if scores:
+            sorted_items = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+
+            top1_label, top1_prob = sorted_items[0]
+
+            if top1_prob >= 0.99:
+                logger.info(f"[WARN] Dropping overconfident top-1: {top1_label} ({top1_prob:.6f})")
+                remaining = sorted_items[1:]
+
+                if remaining:
+                    new_scores = {lbl: prob for lbl, prob in remaining}
+                    new_top1 = remaining[0][0]
+                    video_res["scores"] = new_scores
+                    video_res["top1"] = new_top1
+                else:
+                    logger.info("[WARN] No alternative top-k classes available")
+
         frame_files = extract_frames_to_files(input_path, num=run_photo_on_frames)
         photo_results = []
         try:
