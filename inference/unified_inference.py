@@ -244,11 +244,31 @@ def cli():
     parser.add_argument("--input", "-i", required=True, help="Path to image or video")
     parser.add_argument("--frames", "-f", type=int, default=5, help="Number of frames to run photo model on")
     parser.add_argument("--topk", "-k", type=int, default=5, help="Top-k for video model")
+    parser.add_argument("--show-raw", action="store_true", help="Show logits and other raw outputs")
+
     args = parser.parse_args()
 
-    res = run_inference(args.input, run_photo_on_frames=args.frames, topk_video=args.topk)
+    res = run_inference(
+        args.input,
+        run_photo_on_frames=args.frames,
+        topk_video=args.topk,
+    )
+
     print("\n[bold]RESULT[/bold]")
+
+    if not args.show_raw:
+        def strip_raw(x):
+            if isinstance(x, dict):
+                return {k: strip_raw(v) for k, v in x.items()
+                        if k not in ("raw", "video_raw", "photo_raws")}
+            if isinstance(x, list):
+                return [strip_raw(v) for v in x]
+            return x
+
+        res = strip_raw(res)
+
     print(res)
+
 
 if __name__ == "__main__":
     cli()
