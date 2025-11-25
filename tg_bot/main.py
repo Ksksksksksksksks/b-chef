@@ -135,17 +135,67 @@ async def handle_photo(message: Message):
         await message.answer("We're not cooking yet! Please choose a dish 😊", reply_markup=mode_keyboard())
         return
 
-    # Placeholder for result checking
-    is_ok = True  
+    import tempfile
+    from inference.unified_inference import run_inference
+    import logging
+    logger = logging.getLogger("bchef.bot")
+    # Сохраняем фото во временный файл
+    photo = message.photo[-1]
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+        file = await bot.download(photo, destination=tmp)
+        tmp_path = tmp.name
 
-    if is_ok:
-        await message.answer(
-            "Looks great! 👍 Ready to move on?\n\n💬 Rate my response:",
-            reply_markup=feedback_keyboard()
-        )
-        user_data[user_id]["waiting_feedback"] = True
+    try:
+        result = run_inference(tmp_path)
+        logger.info(f"Photo inference result: {result}")
+    except Exception as e:
+        logger.exception(f"Photo inference failed: {e}")
+        await message.answer("Ошибка при анализе фото. Попробуйте еще раз.")
+        return
+    finally:
+        os.remove(tmp_path)
+
+    # Формируем красивый ответ
+    msg = None
+    if isinstance(result, dict) and ("photo" in result or "food" in result):
+        photo = result.get("photo", result)
+        food = photo.get("food") or photo.get("top1") or "?"
+        doneness = photo.get("doneness", "?")
+        recommendation = photo.get("recommendation", "")
+        # Определяем последний ли шаг
+        user_recipe = user_data.get(user_id, {}).get("recipe")
+        user_step = user_data.get(user_id, {}).get("step", 0)
+        steps = recipes.get(user_recipe, {}).get("steps", [])
+        # Проверяем: если cooking==False, значит это был последний шаг
+        is_last = not user_data.get(user_id, {}).get("cooking", True) or (steps and user_step >= len(steps))
+        if is_last:
+            ending = "Recipe completed, bon appétit!"
+        else:
+            ending = "Let's move to the next step!"
+        msg = f"I see {food}.\n{ending}"
+    if not msg:
+        msg = "Error - try another photo."
+
+    feedback_text = "\n\ndo you like tone of this conversation?"
+    await message.answer(msg + feedback_text, reply_markup=feedback_keyboard())
+    # Короткий лог: только ключевые поля
+    if isinstance(result, dict):
+        if result.get("type") == "image" and "photo" in result:
+            photo = result["photo"]
+            logger.info(f"[SUMMARY] Photo: food={photo.get('food')}, doneness={photo.get('doneness')}, container={photo.get('container')}, recommendation={photo.get('recommendation')}")
+        elif result.get("type") == "video":
+            video = result.get("video", {})
+            logger.info(f"[SUMMARY] Video: top1={video.get('top1')}, scores={video.get('scores')}")
+            frames = result.get("photo_frames", [])
+            if frames:
+                first = frames[0]
+                logger.info(f"[SUMMARY] First frame: food={first.get('food')}, doneness={first.get('doneness')}, recommendation={first.get('recommendation')}")
+        else:
+            logger.info(f"[SUMMARY] Inference: {str(result)[:200]}")
     else:
-        await message.answer("Hmm, it seems that step needs to be redone. Try again!")
+        logger.info(f"[SUMMARY] Inference: {str(result)[:200]}")
+    # (удалено, теперь только короткий лог)
+    user_data[user_id]["waiting_feedback"] = True
 
 @dp.message(F.video | F.video_note)
 async def handle_video(message: Message):
@@ -156,16 +206,70 @@ async def handle_video(message: Message):
         await message.answer("We're not cooking yet! Please choose a dish 😊", reply_markup=mode_keyboard())
         return
 
-    is_ok = True  
+    import tempfile
+    from inference.unified_inference import run_inference
+    import logging
+    logger = logging.getLogger("bchef.bot")
+    # Сохраняем видео во временный файл
+    video = message.video or message.video_note
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+        file = await bot.download(video, destination=tmp)
+        tmp_path = tmp.name
 
-    if is_ok:
-        await message.answer(
-            "Thanks for the video! 🎥 Looks awesome!\n\n💬 Rate my response:",
-            reply_markup=feedback_keyboard()
-        )
-        user_data[user_id]["waiting_feedback"] = True
+    try:
+        result = run_inference(tmp_path)
+        logger.info(f"Video inference result: {result}")
+    except Exception as e:
+        logger.exception(f"Video inference failed: {e}")
+        await message.answer("Ошибка при анализе видео. Попробуйте еще раз.")
+        return
+    finally:
+        os.remove(tmp_path)
+
+    # Формируем красивый ответ
+    msg = None
+    if isinstance(result, dict) and result.get("type") == "video":
+        video = result.get("video", {})
+        top1 = video.get("top1", "?")
+        # Берём первый кадр фото для примера
+        photo_frames = result.get("photo_frames", [])
+        if photo_frames:
+            photo = photo_frames[0]
+            food = photo.get("food") or photo.get("top1") or "?"
+            doneness = photo.get("doneness", "?")
+            recommendation = photo.get("recommendation", "")
+            user_recipe = user_data.get(user_id, {}).get("recipe")
+            user_step = user_data.get(user_id, {}).get("step", 0)
+            steps = recipes.get(user_recipe, {}).get("steps", [])
+            is_last = not user_data.get(user_id, {}).get("cooking", True) or (steps and user_step >= len(steps))
+            if is_last:
+                ending = "Recipe completed, bon appétit!"
+            else:
+                ending = "Let's move to the next step!"
+            msg = f"Great! You sent a video with {top1}. \n{ending}"
+    if not msg:
+        msg = "Error - try another video."
+
+    feedback_text = "\n\ndo you like tone of this conversation?"
+    await message.answer(msg + feedback_text, reply_markup=feedback_keyboard())
+    # Короткий лог: только ключевые поля
+    if isinstance(result, dict):
+        if result.get("type") == "video":
+            video = result.get("video", {})
+            logger.info(f"[SUMMARY] Video: top1={video.get('top1')}, scores={video.get('scores')}")
+            frames = result.get("photo_frames", [])
+            if frames:
+                first = frames[0]
+                logger.info(f"[SUMMARY] First frame: food={first.get('food')}, doneness={first.get('doneness')}, recommendation={first.get('recommendation')}")
+        elif result.get("type") == "image" and "photo" in result:
+            photo = result["photo"]
+            logger.info(f"[SUMMARY] Photo: food={photo.get('food')}, doneness={photo.get('doneness')}, container={photo.get('container')}, recommendation={photo.get('recommendation')}")
+        else:
+            logger.info(f"[SUMMARY] Inference: {str(result)[:200]}")
     else:
-        await message.answer("Something didn’t go quite right 😅 Try that step again.")
+        logger.info(f"[SUMMARY] Inference: {str(result)[:200]}")
+    # (удалено, теперь только короткий лог)
+    user_data[user_id]["waiting_feedback"] = True
 
 @dp.message(F.text == "📖 View Recipe")
 async def show_recipe(message: Message):
