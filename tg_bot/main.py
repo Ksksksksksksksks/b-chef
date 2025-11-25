@@ -176,7 +176,8 @@ async def handle_photo(message: Message):
     if not msg:
         msg = "Error - try another photo."
 
-    await message.answer(msg, reply_markup=feedback_keyboard())
+    feedback_text = "\n\ndo you like tone of this conversation?"
+    await message.answer(msg + feedback_text, reply_markup=feedback_keyboard())
     # Короткий лог: только ключевые поля
     if isinstance(result, dict):
         if result.get("type") == "image" and "photo" in result:
@@ -249,7 +250,8 @@ async def handle_video(message: Message):
     if not msg:
         msg = "Error - try another video."
 
-    await message.answer(msg, reply_markup=feedback_keyboard())
+    feedback_text = "\n\ndo you like tone of this conversation?"
+    await message.answer(msg + feedback_text, reply_markup=feedback_keyboard())
     # Короткий лог: только ключевые поля
     if isinstance(result, dict):
         if result.get("type") == "video":
