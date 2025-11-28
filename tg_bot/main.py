@@ -3,10 +3,12 @@ from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKe
 from aiogram.filters import CommandStart
 from dotenv import load_dotenv
 import os
+import sys
 import asyncio
 import json
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, BASE_DIR)
 dotenv_path = os.path.join(BASE_DIR, ".env")
 load_dotenv(dotenv_path)
 
@@ -69,6 +71,113 @@ def feedback_keyboard():
             ]
         ]
     )
+
+
+async def format_inference_response(result: dict, user_id: int) -> str:
+
+    if not isinstance(result, dict):
+        return "I couldn't analyze your media. Please try again with a clearer photo or video."
+
+    result_type = result.get("type")
+
+    user_recipe = user_data.get(user_id, {}).get("recipe")
+    user_step = user_data.get(user_id, {}).get("step", 0)
+    steps = recipes.get(user_recipe, {}).get("steps", [])
+    is_last = not user_data.get(user_id, {}).get("cooking", True) or (steps and user_step >= len(steps))
+
+    if result_type == "image":
+        return await format_photo_response(result, is_last)
+    elif result_type == "video":
+        return await format_video_response(result, is_last)
+    else:
+        return "I received your media but couldn't process it properly. Please try again."
+
+
+async def format_photo_response(result: dict, is_last: bool) -> str:
+    photo_data = result.get("photo", {})
+
+    food = photo_data.get("food", "unknown dish")
+    doneness = photo_data.get("doneness", "unknown doneness")
+    container = photo_data.get("container", "unknown container")
+    recommendation = photo_data.get("recommendation", "")
+
+    if is_last:
+        base_msg = f"🎉 Perfect! I see your {food} is ready!"
+    else:
+        base_msg = f"👨‍🍳 Great! I see you're working on {food}."
+
+    analysis_details = f"\n\n🔍 My analysis:\n"
+    analysis_details += f"• 🍽️ Food: {food}\n"
+    analysis_details += f"• 🔥 Doneness: {doneness}\n"
+    analysis_details += f"• 🍳 Container: {container}\n"
+
+    if recommendation and recommendation != "Unknown food type.":
+        analysis_details += f"• 💡 Tip: {recommendation}"
+
+    return base_msg + analysis_details
+
+
+async def format_video_response(result: dict, is_last: bool) -> str:
+    video_data = result.get("video", {})
+    fusion_data = result.get("fusion", {})
+    report_data = fusion_data.get("report", {})
+
+    video_action = video_data.get("top1", "cooking")
+    main_food = report_data.get("photo_top1", "unknown dish")
+    main_doneness = report_data.get("photo_doneness", "unknown doneness")
+    main_container = report_data.get("photo_container", "unknown container")
+
+    if is_last:
+        base_msg = f"🎉 Excellent! Your {main_food} looks complete!"
+    else:
+        base_msg = f"👨‍🍳 Great progress! I see you're {video_action}."
+
+    analysis_details = f"\n\n🔍 My analysis:\n"
+    analysis_details += f"• 🎬 Action: {video_action}\n"
+    analysis_details += f"• 🍽️ Main food: {main_food}\n"
+    analysis_details += f"• 🔥 Doneness: {main_doneness}\n"
+    analysis_details += f"• 🍳 Container: {main_container}\n"
+
+    # fusion_generated = fusion_data.get("generated")
+    # if fusion_generated:
+    #     analysis_details += f"• 🤖 AI insight: {fusion_generated}\n"
+
+    return base_msg + analysis_details
+
+
+def log_inference_result(result: dict, media_type: str):
+    import logging
+    logger = logging.getLogger("bchef.bot")
+
+    if not isinstance(result, dict):
+        logger.info(f"[SUMMARY] {media_type.title()}: Invalid result format")
+        return
+
+    result_type = result.get("type")
+
+    if result_type == "image":
+        photo_data = result.get("photo", {})
+        logger.info(f"[SUMMARY] Photo: food={photo_data.get('food')}, "
+                    f"doneness={photo_data.get('doneness')}, "
+                    f"container={photo_data.get('container')}, "
+                    f"recommendation={photo_data.get('recommendation', '')[:100]}...")
+
+    elif result_type == "video":
+        video_data = result.get("video", {})
+        fusion_data = result.get("fusion", {})
+        report_data = fusion_data.get("report", {})
+
+        logger.info(f"[SUMMARY] Video: action={video_data.get('top1')}, "
+                    f"main_food={report_data.get('photo_top1')}, "
+                    f"doneness={report_data.get('photo_doneness')}, "
+                    f"container={report_data.get('photo_container')}")
+
+        frames = result.get("photo_frames", [])
+        if frames:
+            first_frame = frames[0]
+            logger.info(f"[SUMMARY] First frame: food={first_frame.get('food')}, "
+                        f"doneness={first_frame.get('doneness')}")
+
 
 # --- Handlers ---
 @dp.message(CommandStart())
@@ -139,7 +248,6 @@ async def handle_photo(message: Message):
     from inference.unified_inference import run_inference
     import logging
     logger = logging.getLogger("bchef.bot")
-    # Сохраняем фото во временный файл
     photo = message.photo[-1]
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
         file = await bot.download(photo, destination=tmp)
@@ -155,46 +263,47 @@ async def handle_photo(message: Message):
     finally:
         os.remove(tmp_path)
 
-    # Формируем красивый ответ
     msg = None
-    if isinstance(result, dict) and ("photo" in result or "food" in result):
-        photo = result.get("photo", result)
-        food = photo.get("food") or photo.get("top1") or "?"
-        doneness = photo.get("doneness", "?")
-        recommendation = photo.get("recommendation", "")
-        # Определяем последний ли шаг
-        user_recipe = user_data.get(user_id, {}).get("recipe")
-        user_step = user_data.get(user_id, {}).get("step", 0)
-        steps = recipes.get(user_recipe, {}).get("steps", [])
-        # Проверяем: если cooking==False, значит это был последний шаг
-        is_last = not user_data.get(user_id, {}).get("cooking", True) or (steps and user_step >= len(steps))
-        if is_last:
-            ending = "Recipe completed, bon appétit!"
-        else:
-            ending = "Let's move to the next step!"
-        msg = f"I see {food}.\n{ending}"
+    msg = await format_inference_response(result, user_id)
+    # if isinstance(result, dict) and ("photo" in result or "food" in result):
+    #     photo = result.get("photo", result)
+    #     food = photo.get("food") or photo.get("top1") or "?"
+    #     doneness = photo.get("doneness", "?")
+    #     recommendation = photo.get("recommendation", "")
+    #     # Определяем последний ли шаг
+    #     user_recipe = user_data.get(user_id, {}).get("recipe")
+    #     user_step = user_data.get(user_id, {}).get("step", 0)
+    #     steps = recipes.get(user_recipe, {}).get("steps", [])
+    #     # Проверяем: если cooking==False, значит это был последний шаг
+    #     is_last = not user_data.get(user_id, {}).get("cooking", True) or (steps and user_step >= len(steps))
+    #     if is_last:
+    #         ending = "Recipe completed, bon appétit!"
+    #     else:
+    #         ending = "Let's move to the next step!"
+    #     msg = f"I see {food}.\n{ending}"
     if not msg:
         msg = "Error - try another photo."
 
     feedback_text = "\n\ndo you like tone of this conversation?"
     await message.answer(msg + feedback_text, reply_markup=feedback_keyboard())
-    # Короткий лог: только ключевые поля
-    if isinstance(result, dict):
-        if result.get("type") == "image" and "photo" in result:
-            photo = result["photo"]
-            logger.info(f"[SUMMARY] Photo: food={photo.get('food')}, doneness={photo.get('doneness')}, container={photo.get('container')}, recommendation={photo.get('recommendation')}")
-        elif result.get("type") == "video":
-            video = result.get("video", {})
-            logger.info(f"[SUMMARY] Video: top1={video.get('top1')}, scores={video.get('scores')}")
-            frames = result.get("photo_frames", [])
-            if frames:
-                first = frames[0]
-                logger.info(f"[SUMMARY] First frame: food={first.get('food')}, doneness={first.get('doneness')}, recommendation={first.get('recommendation')}")
-        else:
-            logger.info(f"[SUMMARY] Inference: {str(result)[:200]}")
-    else:
-        logger.info(f"[SUMMARY] Inference: {str(result)[:200]}")
-    # (удалено, теперь только короткий лог)
+
+    # if isinstance(result, dict):
+    #     if result.get("type") == "image" and "photo" in result:
+    #         photo = result["photo"]
+    #         logger.info(f"[SUMMARY] Photo: food={photo.get('food')}, doneness={photo.get('doneness')}, container={photo.get('container')}, recommendation={photo.get('recommendation')}")
+    #     elif result.get("type") == "video":
+    #         video = result.get("video", {})
+    #         logger.info(f"[SUMMARY] Video: top1={video.get('top1')}, scores={video.get('scores')}")
+    #         frames = result.get("photo_frames", [])
+    #         if frames:
+    #             first = frames[0]
+    #             logger.info(f"[SUMMARY] First frame: food={first.get('food')}, doneness={first.get('doneness')}, recommendation={first.get('recommendation')}")
+    #     else:
+    #         logger.info(f"[SUMMARY] Inference: {str(result)[:200]}")
+    # else:
+    #     logger.info(f"[SUMMARY] Inference: {str(result)[:200]}")
+    log_inference_result(result, "photo")
+
     user_data[user_id]["waiting_feedback"] = True
 
 @dp.message(F.video | F.video_note)
@@ -210,7 +319,6 @@ async def handle_video(message: Message):
     from inference.unified_inference import run_inference
     import logging
     logger = logging.getLogger("bchef.bot")
-    # Сохраняем видео во временный файл
     video = message.video or message.video_note
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
         file = await bot.download(video, destination=tmp)
@@ -226,49 +334,51 @@ async def handle_video(message: Message):
     finally:
         os.remove(tmp_path)
 
-    # Формируем красивый ответ
+
     msg = None
-    if isinstance(result, dict) and result.get("type") == "video":
-        video = result.get("video", {})
-        top1 = video.get("top1", "?")
-        # Берём первый кадр фото для примера
-        photo_frames = result.get("photo_frames", [])
-        if photo_frames:
-            photo = photo_frames[0]
-            food = photo.get("food") or photo.get("top1") or "?"
-            doneness = photo.get("doneness", "?")
-            recommendation = photo.get("recommendation", "")
-            user_recipe = user_data.get(user_id, {}).get("recipe")
-            user_step = user_data.get(user_id, {}).get("step", 0)
-            steps = recipes.get(user_recipe, {}).get("steps", [])
-            is_last = not user_data.get(user_id, {}).get("cooking", True) or (steps and user_step >= len(steps))
-            if is_last:
-                ending = "Recipe completed, bon appétit!"
-            else:
-                ending = "Let's move to the next step!"
-            msg = f"Great! You sent a video with {top1}. \n{ending}"
+    msg = await format_inference_response(result, user_id)
+    # if isinstance(result, dict) and result.get("type") == "video":
+    #     video = result.get("video", {})
+    #     top1 = video.get("top1", "?")
+    #     # Берём первый кадр фото для примера
+    #     photo_frames = result.get("photo_frames", [])
+    #     if photo_frames:
+    #         photo = photo_frames[0]
+    #         food = photo.get("food") or photo.get("top1") or "?"
+    #         doneness = photo.get("doneness", "?")
+    #         recommendation = photo.get("recommendation", "")
+    #         user_recipe = user_data.get(user_id, {}).get("recipe")
+    #         user_step = user_data.get(user_id, {}).get("step", 0)
+    #         steps = recipes.get(user_recipe, {}).get("steps", [])
+    #         is_last = not user_data.get(user_id, {}).get("cooking", True) or (steps and user_step >= len(steps))
+    #         if is_last:
+    #             ending = "Recipe completed, bon appétit!"
+    #         else:
+    #             ending = "Let's move to the next step!"
+    #         msg = f"Great! You sent a video with {top1}. \n{ending}"
     if not msg:
         msg = "Error - try another video."
 
     feedback_text = "\n\ndo you like tone of this conversation?"
     await message.answer(msg + feedback_text, reply_markup=feedback_keyboard())
-    # Короткий лог: только ключевые поля
-    if isinstance(result, dict):
-        if result.get("type") == "video":
-            video = result.get("video", {})
-            logger.info(f"[SUMMARY] Video: top1={video.get('top1')}, scores={video.get('scores')}")
-            frames = result.get("photo_frames", [])
-            if frames:
-                first = frames[0]
-                logger.info(f"[SUMMARY] First frame: food={first.get('food')}, doneness={first.get('doneness')}, recommendation={first.get('recommendation')}")
-        elif result.get("type") == "image" and "photo" in result:
-            photo = result["photo"]
-            logger.info(f"[SUMMARY] Photo: food={photo.get('food')}, doneness={photo.get('doneness')}, container={photo.get('container')}, recommendation={photo.get('recommendation')}")
-        else:
-            logger.info(f"[SUMMARY] Inference: {str(result)[:200]}")
-    else:
-        logger.info(f"[SUMMARY] Inference: {str(result)[:200]}")
-    # (удалено, теперь только короткий лог)
+    # if isinstance(result, dict):
+    #     if result.get("type") == "video":
+    #         video = result.get("video", {})
+    #         logger.info(f"[SUMMARY] Video: top1={video.get('top1')}, scores={video.get('scores')}")
+    #         frames = result.get("photo_frames", [])
+    #         if frames:
+    #             first = frames[0]
+    #             logger.info(f"[SUMMARY] First frame: food={first.get('food')}, doneness={first.get('doneness')}, recommendation={first.get('recommendation')}")
+    #     elif result.get("type") == "image" and "photo" in result:
+    #         photo = result["photo"]
+    #         logger.info(f"[SUMMARY] Photo: food={photo.get('food')}, doneness={photo.get('doneness')}, container={photo.get('container')}, recommendation={photo.get('recommendation')}")
+    #     else:
+    #         logger.info(f"[SUMMARY] Inference: {str(result)[:200]}")
+    # else:
+    #     logger.info(f"[SUMMARY] Inference: {str(result)[:200]}")
+
+    log_inference_result(result, "video")
+
     user_data[user_id]["waiting_feedback"] = True
 
 @dp.message(F.text == "📖 View Recipe")
