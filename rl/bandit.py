@@ -1,6 +1,16 @@
 import json
 import os
 import random
+import logging
+import sys
+
+from rich.logging import RichHandler
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(message)s',
+    handlers=[RichHandler(rich_tracebacks=True, show_time=True, show_level=True)]
+)
+logger = logging.getLogger("bchef.rl")
 
 
 class BanditPolicy:
@@ -10,8 +20,9 @@ class BanditPolicy:
         self.epsilon_0 = epsilon_0
         self.decay_rate = decay_rate
         self.min_epsilon = min_epsilon
-        self.actions = ["grandma", "gordon.txt", "neutral"]
+        self.actions = ["grandma", "gordon", "neutral"]
         self.states = [0, 1]
+        logger.info("🎰 RL BanditPolicy initialized")
 
         # Load or init Q-table (per-user dict)
         if os.path.exists(self.path):
@@ -20,14 +31,17 @@ class BanditPolicy:
                 self.Q = data["Q"]  # {user_id: [[q_gma, q_gor, q_neu] for s in [0,1]]}
                 self.timesteps = data["timesteps"]  # {user_id: t}
                 self.epsilons = data["epsilons"]  # {user_id: epsilon}
+                logger.info(f"📊 Loaded Q-table from {self.path}")
         else:
             self.Q = {}
             self.timesteps = {}
             self.epsilons = {}
             self._save()
+            logger.info("🆕 Created new Q-table")
 
     def choose_action(self, user_id, state, user_data):
         user_id = str(user_id)
+        logger.debug(f"🎯 Choosing action for user {user_id}, state {state}")
         if user_id not in self.Q:
             self.Q[user_id] = [[0.0 for _ in self.actions] for _ in self.states]
             self.timesteps[user_id] = 0
@@ -48,10 +62,12 @@ class BanditPolicy:
             return random.choice(self.actions)
         else:
             action_idx = self.Q[user_id][state].index(max(self.Q[user_id][state]))
+            logger.debug(f"🤖 Selected tone: {self.actions[action_idx]} for user {user_id}")
             return self.actions[action_idx]
 
     def update(self, user_id, state, action, reward):
         user_id = str(user_id)
+        logger.info(f"🔄 Updating Q-table: user {user_id}, state {state}, action {action}, reward {reward}")
         if user_id not in self.Q:
             raise ValueError(f"No Q for user {user_id}")
 

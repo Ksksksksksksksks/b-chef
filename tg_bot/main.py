@@ -8,6 +8,12 @@ import asyncio
 import json
 import logging
 
+from rich.logging import RichHandler
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(message)s',
+    handlers=[RichHandler(rich_tracebacks=True, show_time=True, show_level=True)]
+)
 logger = logging.getLogger("bchef.bot")
 
 
@@ -42,8 +48,7 @@ user_data = {}
 bandit_policy = BanditPolicy(path="qtable.json")
 
 # tones dir
-TONES_DIR = os.path.join(BASE_DIR, "rl/tones")
-
+TONES_DIR = os.path.join(BASE_DIR, "rl", "tones")
 _template_cache = {}
 
 
@@ -52,20 +57,33 @@ def _load_tone_templates(tone: str):
         return _template_cache[tone]
 
     path = os.path.join(TONES_DIR, f"{tone}.txt")
+    logger.info(f"Loading tone template: {path}")
     if not os.path.exists(path):
         path = os.path.join(TONES_DIR, "neutral.txt")
+        logger.warning(f"Tone file not found: {path}, falling back to neutral")
         if not os.path.exists(path):
+            logger.error(f"Template file not found for tone: {tone}")
             return None
 
     templates = {"correct": "", "incorrect": "", "correct_last": "", "incorrect_last": ""}
     current_key = None
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line.startswith("[") and line.endswith("]"):
-                current_key = line[1:-1]
-            elif current_key and line:
-                templates[current_key] += line + "\n"
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("[") and line.endswith("]"):
+                    current_key = line[1:-1]
+                elif current_key and line:
+                    templates[current_key] += line + "\n"
+    except FileNotFoundError as e:
+        logger.error(f"Error loading template {tone}: {e}")
+        # Hardcoded fallback if files are truly missing
+        return {
+            "correct": "Great job with the {food}! Looking good.",
+            "incorrect": "Hmm, this doesn't look quite right. You should be {recipe_step}.",
+            "correct_last": "Perfect! Your {food} is ready to serve.",
+            "incorrect_last": "This {food} needs more work. Let's try again."
+        }
 
     for key in templates:
         templates[key] = templates[key].strip()
@@ -76,11 +94,19 @@ def _load_tone_templates(tone: str):
 
 def _get_template(tone: str, is_correct: bool, is_last: bool) -> str:
     templates = _load_tone_templates(tone)
+    logger.warning(f"No templates found for tone: {tone}")
     if not templates:
         return None
 
     key = ("correct" if is_correct else "incorrect") + ("_last" if is_last else "")
-    return templates.get(key) or templates.get("correct" if is_correct else "incorrect", "")
+    template = templates.get(key)
+
+    if not template:
+        fallback_key = "correct" if is_correct else "incorrect"
+        template = templates.get(fallback_key, "")
+        logger.warning(f"Template {key} not found, using {fallback_key}")
+
+    return template
 
 # --- Keyboards ---
 
@@ -150,9 +176,13 @@ async def format_inference_response(result: dict, user_id: int) -> str:
         current_step_text = steps[user_step].lower()
 
     # === RL: check state and choose tone ===
-    state = determine_state(result, user_data.get(user_id, {}))
+    # state = determine_state(result, user_data.get(user_id, {}))
+    state = determine_state(result, user_data[user_id])
+
     is_correct = state == 1
     tone = bandit_policy.choose_action(user_id, state, user_data)
+
+    logger.info(f"RL Debug - User: {user_id}, State: {state}, Tone: {tone}, Correct: {is_correct}")
 
     # for q update after feedback
     user_data[user_id]["last_tone"] = tone
@@ -359,8 +389,6 @@ async def handle_photo(message: Message):
 
     import tempfile
     from inference.unified_inference import run_inference
-    import logging
-    logger = logging.getLogger("bchef.bot")
     photo = message.photo[-1]
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
         file = await bot.download(photo, destination=tmp)
@@ -373,7 +401,7 @@ async def handle_photo(message: Message):
 
     try:
         result = run_inference(tmp_path)
-        logger.info(f"Photo inference result: {result}")
+        logger.info(f"Photo inference summary: type={result.get('type')}, food={result.get('photo', {}).get('food')}, doneness={result.get('photo', {}).get('doneness')}")
     except Exception as e:
         logger.exception(f"Photo inference failed: {e}")
         await message.answer("Error during photo analysis. Try again.")
@@ -405,8 +433,6 @@ async def handle_video(message: Message):
 
     import tempfile
     from inference.unified_inference import run_inference
-    import logging
-    logger = logging.getLogger("bchef.bot")
     video = message.video or message.video_note
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
         file = await bot.download(video, destination=tmp)
@@ -419,7 +445,7 @@ async def handle_video(message: Message):
 
     try:
         result = run_inference(tmp_path)
-        logger.info(f"Video inference result: {result}")
+        logger.info(f"Video inference summary: type={result.get('type')}, top1={result.get('video', {}).get('top1')}, fusion_generated={result.get('fusion', {}).get('generated')}")
     except Exception as e:
         logger.exception(f"Video inference failed: {e}")
         await message.answer("Error during analysis, try again.")
@@ -517,6 +543,7 @@ async def handle_text_only(message: Message):
 
 # --- Entry point ---
 async def main():
+    logger.info("✅ Bot is ready and polling for updates")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":

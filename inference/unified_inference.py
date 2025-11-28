@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import List, Dict, Any
 import logging
+import sys
 from rich.logging import RichHandler
 from rich import print
 import cv2
@@ -15,8 +16,15 @@ import numpy as np
 import torch
 from collections import Counter
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 # Configure rich logging
-logging.basicConfig(level="INFO", format="%(message)s", handlers=[RichHandler()])
+from rich.logging import RichHandler
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(message)s",
+    handlers=[RichHandler(rich_tracebacks=True, show_time=True, show_level=True)]
+)
 logger = logging.getLogger("unified_inference")
 
 # Default model paths

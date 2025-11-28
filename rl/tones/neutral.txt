@@ -1,0 +1,11 @@
+[correct]
+Great job with the {food}! Looking good.
+
+[incorrect]
+Hmm, this doesn't look quite right. You should be {recipe_step}.
+
+[correct_last]
+Perfect! Your {food} is ready to serve.
+
+[incorrect_last]
+This {food} needs more work. Let's try again.
