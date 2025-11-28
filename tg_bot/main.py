@@ -6,6 +6,9 @@ import os
 import sys
 import asyncio
 import json
+import logging
+
+logger = logging.getLogger("bchef.bot")
 
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -142,6 +145,10 @@ async def format_inference_response(result: dict, user_id: int) -> str:
     steps = recipes.get(user_recipe, {}).get("steps", [])
     is_last = not user_data.get(user_id, {}).get("cooking", True) or (steps and user_step >= len(steps))
 
+    current_step_text = ""
+    if steps and user_step < len(steps):
+        current_step_text = steps[user_step].lower()
+
     # === RL: check state and choose tone ===
     state = determine_state(result, user_data.get(user_id, {}))
     is_correct = state == 1
@@ -154,15 +161,16 @@ async def format_inference_response(result: dict, user_id: int) -> str:
     # =========================================
 
     if result_type == "image":
-        return await format_photo_response(result, is_last, tone, is_correct)
+        return await format_photo_response(result, is_last, tone, is_correct, current_step_text)
     elif result_type == "video":
-        return await format_video_response(result, is_last, tone, is_correct)
+        return await format_video_response(result, is_last, tone, is_correct, current_step_text)
     else:
         return "I received your media but couldn't process it properly. Please try again."
 
 
 async def format_photo_response(result: dict, is_last: bool,
-                                tone: str = "neutral", is_correct: bool = True) -> str:
+                                tone: str = "neutral", is_correct: bool = True,
+                                recipe_step: str = "") -> str:
     photo_data = result.get("photo", {})
 
     food = photo_data.get("food", "unknown dish")
@@ -177,9 +185,11 @@ async def format_photo_response(result: dict, is_last: bool,
                 food=food,
                 doneness=doneness,
                 container=container,
-                recommendation=recommendation
+                recommendation=recommendation,
+                recipe_step=recipe_step
             )
         except KeyError:
+            logger.info("Error during template matching")
             base_msg = template
     else:
         if is_last:
@@ -199,7 +209,8 @@ async def format_photo_response(result: dict, is_last: bool,
 
 
 async def format_video_response(result: dict, is_last: bool,
-                                tone: str = "neutral", is_correct: bool = True) -> str:
+                                tone: str = "neutral", is_correct: bool = True,
+                                recipe_step: str = "") -> str:
     video_data = result.get("video", {})
     fusion_data = result.get("fusion", {})
     report_data = fusion_data.get("report", {})
@@ -216,9 +227,11 @@ async def format_video_response(result: dict, is_last: bool,
                 action=video_action,
                 food=main_food,
                 doneness=main_doneness,
-                container=main_container
+                container=main_container,
+                recipe_step=recipe_step
             )
         except KeyError:
+            logger.info("Error during template matching")
             base_msg = template
     else:
         if is_last:
@@ -236,8 +249,6 @@ async def format_video_response(result: dict, is_last: bool,
 
 
 def log_inference_result(result: dict, media_type: str):
-    import logging
-    logger = logging.getLogger("bchef.bot")
 
     if not isinstance(result, dict):
         logger.info(f"[SUMMARY] {media_type.title()}: Invalid result format")
@@ -277,25 +288,6 @@ async def cmd_start(message: Message):
         reply_markup=mode_keyboard()
     )
 
-
-@dp.message(F.text.in_(["👨‍🍳 None of them", "👵 Sweet Grandma", "🍳 Gordon Ramsay"]))
-async def choose_initial_tone(message: Message):
-    user_id = message.from_user.id
-
-    initial_tone = {
-        "🍳 Gordon Ramsay": "gordon",
-        "👵 Sweet Grandma": "grandma",
-        "👨‍🍳 None of them": "neutral"
-    }[message.text]
-
-    user_data[user_id] = {"initial_tone": initial_tone}
-
-    await message.answer(
-        f"Сool! Your chosen mode: {message.text}\n"
-        "Which recipe we will cook together? Choose:",
-        reply_markup=recipes_keyboard()
-    )
-
 @dp.message(F.text.in_(list(RECIPE_LIST.keys())))
 async def choose_recipe(message: Message):
     user_id = message.from_user.id
@@ -318,6 +310,24 @@ async def choose_recipe(message: Message):
     )
 
     await send_next_step(message.chat.id, user_id)
+
+@dp.message(F.text.in_(["👨‍🍳 None of them", "👵 Sweet Grandma", "🍳 Gordon Ramsay"]))
+async def choose_initial_tone(message: Message):
+    user_id = message.from_user.id
+
+    initial_tone = {
+        "🍳 Gordon Ramsay": "gordon",
+        "👵 Sweet Grandma": "grandma",
+        "👨‍🍳 None of them": "neutral"
+    }[message.text]
+
+    user_data[user_id] = {"initial_tone": initial_tone}
+
+    await message.answer(
+        f"Сool! Your chosen mode: {message.text}\n"
+        "Which recipe we will cook together? Choose:",
+        reply_markup=recipes_keyboard()
+    )
 
 async def send_next_step(chat_id, user_id):
     data = user_data.get(user_id)
@@ -355,6 +365,11 @@ async def handle_photo(message: Message):
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
         file = await bot.download(photo, destination=tmp)
         tmp_path = tmp.name
+
+    await bot.send_chat_action(message.chat.id, "typing")
+    await message.answer("Let me see what you got there...")
+
+    # await message.react("👀")
 
     try:
         result = run_inference(tmp_path)
@@ -396,6 +411,11 @@ async def handle_video(message: Message):
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
         file = await bot.download(video, destination=tmp)
         tmp_path = tmp.name
+
+    await bot.send_chat_action(message.chat.id, "typing")
+    await message.answer("Let me see what you got there...")
+
+    # await message.react("👀")
 
     try:
         result = run_inference(tmp_path)
