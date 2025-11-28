@@ -7,10 +7,13 @@ import sys
 import asyncio
 import json
 
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE_DIR)
 dotenv_path = os.path.join(BASE_DIR, ".env")
 load_dotenv(dotenv_path)
+
+from rl.bandit import BanditPolicy
 
 bot = Bot(token=os.getenv("BOT_TOKEN"))
 dp = Dispatcher()
@@ -32,11 +35,58 @@ RECIPE_LIST = {
 
 user_data = {}
 
+# rl police init
+bandit_policy = BanditPolicy(path="qtable.json")
+
+# tones dir
+TONES_DIR = os.path.join(BASE_DIR, "rl/tones")
+
+_template_cache = {}
+
+
+def _load_tone_templates(tone: str):
+    if tone in _template_cache:
+        return _template_cache[tone]
+
+    path = os.path.join(TONES_DIR, f"{tone}.txt")
+    if not os.path.exists(path):
+        path = os.path.join(TONES_DIR, "neutral.txt")
+        if not os.path.exists(path):
+            return None
+
+    templates = {"correct": "", "incorrect": ""}
+    current_key = None
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith("[") and line.endswith("]"):
+                current_key = line[1:-1]
+            elif current_key and line:
+                templates[current_key] += line + "\n"
+
+    for key in templates:
+        templates[key] = templates[key].strip()
+
+    _template_cache[tone] = templates
+    return templates
+
+
+def _get_template(tone: str, is_correct: bool, is_last: bool) -> str:
+    templates = _load_tone_templates(tone)
+    if not templates:
+        return None
+
+    key = "correct" if is_correct else "incorrect"
+
+    return templates.get(key) or templates.get("correct" if is_correct else "incorrect", "")
+
 # --- Keyboards ---
+
 def mode_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🍳 Gordon Ramsay Mode"), KeyboardButton(text="👵 Sweet Grandma Mode")]
+            [KeyboardButton(text="🍳 Gordon Ramsay"), KeyboardButton(text="👵 Sweet Grandma"),
+             KeyboardButton(text="👨‍🍳 None of them")]
         ],
         resize_keyboard=True
     )
@@ -72,6 +122,14 @@ def feedback_keyboard():
         ]
     )
 
+def determine_state(result, user_data):
+    current_step = user_data.get("step", 0)
+    recipe = recipes.get(user_data.get("recipe", ""), {})
+    step_text = recipe.get("steps", [])[current_step] if current_step < len(recipe.get("steps", [])) else ""
+
+    if "fry" in step_text.lower() and result.get("photo", {}).get("doneness") in ["medium", "well done"]:
+        return 1
+    return 0
 
 async def format_inference_response(result: dict, user_id: int) -> str:
 
@@ -85,15 +143,27 @@ async def format_inference_response(result: dict, user_id: int) -> str:
     steps = recipes.get(user_recipe, {}).get("steps", [])
     is_last = not user_data.get(user_id, {}).get("cooking", True) or (steps and user_step >= len(steps))
 
+    # === RL: check state and choose tone ===
+    state = determine_state(result, user_data.get(user_id, {}))
+    is_correct = state == 1
+    tone = bandit_policy.choose_action(user_id, state)
+
+    # for q update after feedback
+    user_data[user_id]["last_tone"] = tone
+    user_data[user_id]["last_state"] = state
+    user_data[user_id]["last_result"] = result
+    # =========================================
+
     if result_type == "image":
-        return await format_photo_response(result, is_last)
+        return await format_photo_response(result, is_last, tone, is_correct)
     elif result_type == "video":
-        return await format_video_response(result, is_last)
+        return await format_video_response(result, is_last, tone, is_correct)
     else:
         return "I received your media but couldn't process it properly. Please try again."
 
 
-async def format_photo_response(result: dict, is_last: bool) -> str:
+async def format_photo_response(result: dict, is_last: bool,
+                                tone: str = "neutral", is_correct: bool = True) -> str:
     photo_data = result.get("photo", {})
 
     food = photo_data.get("food", "unknown dish")
@@ -101,10 +171,22 @@ async def format_photo_response(result: dict, is_last: bool) -> str:
     container = photo_data.get("container", "unknown container")
     recommendation = photo_data.get("recommendation", "")
 
-    if is_last:
-        base_msg = f"🎉 Perfect! I see your {food} is ready!"
+    template = _get_template(tone, is_correct, is_last)
+    if template:
+        try:
+            base_msg = template.format(
+                food=food,
+                doneness=doneness,
+                container=container,
+                recommendation=recommendation
+            )
+        except KeyError:
+            base_msg = template
     else:
-        base_msg = f"👨‍🍳 Great! I see you're working on {food}."
+        if is_last:
+            base_msg = f"🎉 Perfect! I see your {food} is ready!"
+        else:
+            base_msg = f"👨‍🍳 Great! I see you're working on {food}."
 
     analysis_details = f"\n\n🔍 My analysis:\n"
     analysis_details += f"• 🍽️ Food: {food}\n"
@@ -117,7 +199,8 @@ async def format_photo_response(result: dict, is_last: bool) -> str:
     return base_msg + analysis_details
 
 
-async def format_video_response(result: dict, is_last: bool) -> str:
+async def format_video_response(result: dict, is_last: bool,
+                                tone: str = "neutral", is_correct: bool = True) -> str:
     video_data = result.get("video", {})
     fusion_data = result.get("fusion", {})
     report_data = fusion_data.get("report", {})
@@ -127,20 +210,28 @@ async def format_video_response(result: dict, is_last: bool) -> str:
     main_doneness = report_data.get("photo_doneness", "unknown doneness")
     main_container = report_data.get("photo_container", "unknown container")
 
-    if is_last:
-        base_msg = f"🎉 Excellent! Your {main_food} looks complete!"
+    template = _get_template(tone, is_correct, is_last)
+    if template:
+        try:
+            base_msg = template.format(
+                action=video_action,
+                food=main_food,
+                doneness=main_doneness,
+                container=main_container
+            )
+        except KeyError:
+            base_msg = template  # если в шаблоне нет всех плейсхолдеров — просто текст
     else:
-        base_msg = f"👨‍🍳 Great progress! I see you're {video_action}."
+        if is_last:
+            base_msg = f"🎉 Excellent! Your {main_food} looks complete!"
+        else:
+            base_msg = f"👨‍🍳 Great progress! I see you're {video_action}."
 
     analysis_details = f"\n\n🔍 My analysis:\n"
     analysis_details += f"• 🎬 Action: {video_action}\n"
     analysis_details += f"• 🍽️ Main food: {main_food}\n"
     analysis_details += f"• 🔥 Doneness: {main_doneness}\n"
     analysis_details += f"• 🍳 Container: {main_container}\n"
-
-    # fusion_generated = fusion_data.get("generated")
-    # if fusion_generated:
-    #     analysis_details += f"• 🤖 AI insight: {fusion_generated}\n"
 
     return base_msg + analysis_details
 
@@ -187,20 +278,33 @@ async def cmd_start(message: Message):
         reply_markup=mode_keyboard()
     )
 
-@dp.message(F.text.in_(["🍳 Gordon Ramsay Mode", "👵 Sweet Grandma Mode"]))
-async def choose_mode(message: Message):
-    user_data[message.from_user.id] = {"mode": message.text, "recipe": None, "step": 0, "cooking": False}
+
+@dp.message(F.text.in_(["👨‍🍳 None of them", "👵 Sweet Grandma", "🍳 Gordon Ramsay"]))
+async def choose_initial_tone(message: Message):
+    user_id = message.from_user.id
+
+    initial_tone = {
+        "🍳 Gordon Ramsay": "gordon",
+        "👵 Sweet Grandma": "grandma",
+        "👨‍🍳 None of them": "neutral"
+    }[message.text]
+
+    user_data[user_id] = {"initial_tone": initial_tone}
+
     await message.answer(
-        f"Awesome! Your mentor is {message.text}.\nNow choose a dish:",
+        f"Сool! Your chosen mode: {message.text}\n"
+        "Which recipe we will cook together? Choose:",
         reply_markup=recipes_keyboard()
     )
 
 @dp.message(F.text.in_(list(RECIPE_LIST.keys())))
 async def choose_recipe(message: Message):
     user_id = message.from_user.id
+    user_data.setdefault(user_id, {})
     if user_id not in user_data:
-        await message.answer("Please choose a mode first! /start")
-        return
+        # await message.answer("Please choose a mode first! /start")
+        # return
+        user_data[user_id] = {}
 
     recipe_key = RECIPE_LIST[message.text]
     user_data[user_id]["recipe"] = recipe_key
@@ -228,7 +332,7 @@ async def send_next_step(chat_id, user_id):
     if current_step >= len(steps):
         user_data[user_id]["cooking"] = False
         user_data[user_id]["step"] = 0
-        await bot.send_message(chat_id, "🎉 Dish completed! Great job, chef!", reply_markup=mode_keyboard())
+        await bot.send_message(chat_id, "🎉 Dish completed! Great job, chef!", reply_markup=recipes_keyboard())
         return
 
     step_text = steps[current_step]
@@ -241,7 +345,7 @@ async def handle_photo(message: Message):
     data = user_data.get(user_id)
 
     if not data or not data.get("cooking"):
-        await message.answer("We're not cooking yet! Please choose a dish 😊", reply_markup=mode_keyboard())
+        await message.answer("We're not cooking yet! Please choose a dish 😊", reply_markup=recipes_keyboard())
         return
 
     import tempfile
@@ -258,53 +362,23 @@ async def handle_photo(message: Message):
         logger.info(f"Photo inference result: {result}")
     except Exception as e:
         logger.exception(f"Photo inference failed: {e}")
-        await message.answer("Ошибка при анализе фото. Попробуйте еще раз.")
+        await message.answer("Error during photo analysis. Try again.")
         return
     finally:
         os.remove(tmp_path)
 
-    msg = None
     msg = await format_inference_response(result, user_id)
-    # if isinstance(result, dict) and ("photo" in result or "food" in result):
-    #     photo = result.get("photo", result)
-    #     food = photo.get("food") or photo.get("top1") or "?"
-    #     doneness = photo.get("doneness", "?")
-    #     recommendation = photo.get("recommendation", "")
-    #     # Определяем последний ли шаг
-    #     user_recipe = user_data.get(user_id, {}).get("recipe")
-    #     user_step = user_data.get(user_id, {}).get("step", 0)
-    #     steps = recipes.get(user_recipe, {}).get("steps", [])
-    #     # Проверяем: если cooking==False, значит это был последний шаг
-    #     is_last = not user_data.get(user_id, {}).get("cooking", True) or (steps and user_step >= len(steps))
-    #     if is_last:
-    #         ending = "Recipe completed, bon appétit!"
-    #     else:
-    #         ending = "Let's move to the next step!"
-    #     msg = f"I see {food}.\n{ending}"
+
     if not msg:
         msg = "Error - try another photo."
 
-    feedback_text = "\n\ndo you like tone of this conversation?"
+    feedback_text = "\n\nDo you like tone of this conversation?"
     await message.answer(msg + feedback_text, reply_markup=feedback_keyboard())
 
-    # if isinstance(result, dict):
-    #     if result.get("type") == "image" and "photo" in result:
-    #         photo = result["photo"]
-    #         logger.info(f"[SUMMARY] Photo: food={photo.get('food')}, doneness={photo.get('doneness')}, container={photo.get('container')}, recommendation={photo.get('recommendation')}")
-    #     elif result.get("type") == "video":
-    #         video = result.get("video", {})
-    #         logger.info(f"[SUMMARY] Video: top1={video.get('top1')}, scores={video.get('scores')}")
-    #         frames = result.get("photo_frames", [])
-    #         if frames:
-    #             first = frames[0]
-    #             logger.info(f"[SUMMARY] First frame: food={first.get('food')}, doneness={first.get('doneness')}, recommendation={first.get('recommendation')}")
-    #     else:
-    #         logger.info(f"[SUMMARY] Inference: {str(result)[:200]}")
-    # else:
-    #     logger.info(f"[SUMMARY] Inference: {str(result)[:200]}")
     log_inference_result(result, "photo")
 
     user_data[user_id]["waiting_feedback"] = True
+    user_data[user_id]["last_result"] = result
 
 @dp.message(F.video | F.video_note)
 async def handle_video(message: Message):
@@ -312,7 +386,7 @@ async def handle_video(message: Message):
     data = user_data.get(user_id)
 
     if not data or not data.get("cooking"):
-        await message.answer("We're not cooking yet! Please choose a dish 😊", reply_markup=mode_keyboard())
+        await message.answer("We're not cooking yet! Please choose a dish 😊", reply_markup=recipes_keyboard())
         return
 
     import tempfile
@@ -329,56 +403,22 @@ async def handle_video(message: Message):
         logger.info(f"Video inference result: {result}")
     except Exception as e:
         logger.exception(f"Video inference failed: {e}")
-        await message.answer("Ошибка при анализе видео. Попробуйте еще раз.")
+        await message.answer("Error during analysis, try again.")
         return
     finally:
         os.remove(tmp_path)
 
-    msg = None
     msg = await format_inference_response(result, user_id)
-    # if isinstance(result, dict) and result.get("type") == "video":
-    #     video = result.get("video", {})
-    #     top1 = video.get("top1", "?")
-    #     # Берём первый кадр фото для примера
-    #     photo_frames = result.get("photo_frames", [])
-    #     if photo_frames:
-    #         photo = photo_frames[0]
-    #         food = photo.get("food") or photo.get("top1") or "?"
-    #         doneness = photo.get("doneness", "?")
-    #         recommendation = photo.get("recommendation", "")
-    #         user_recipe = user_data.get(user_id, {}).get("recipe")
-    #         user_step = user_data.get(user_id, {}).get("step", 0)
-    #         steps = recipes.get(user_recipe, {}).get("steps", [])
-    #         is_last = not user_data.get(user_id, {}).get("cooking", True) or (steps and user_step >= len(steps))
-    #         if is_last:
-    #             ending = "Recipe completed, bon appétit!"
-    #         else:
-    #             ending = "Let's move to the next step!"
-    #         msg = f"Great! You sent a video with {top1}. \n{ending}"
     if not msg:
         msg = "Error - try another video."
 
     feedback_text = "\n\ndo you like tone of this conversation?"
     await message.answer(msg + feedback_text, reply_markup=feedback_keyboard())
-    # if isinstance(result, dict):
-    #     if result.get("type") == "video":
-    #         video = result.get("video", {})
-    #         logger.info(f"[SUMMARY] Video: top1={video.get('top1')}, scores={video.get('scores')}")
-    #         frames = result.get("photo_frames", [])
-    #         if frames:
-    #             first = frames[0]
-    #             logger.info(f"[SUMMARY] First frame: food={first.get('food')}, doneness={first.get('doneness')}, recommendation={first.get('recommendation')}")
-    #     elif result.get("type") == "image" and "photo" in result:
-    #         photo = result["photo"]
-    #         logger.info(f"[SUMMARY] Photo: food={photo.get('food')}, doneness={photo.get('doneness')}, container={photo.get('container')}, recommendation={photo.get('recommendation')}")
-    #     else:
-    #         logger.info(f"[SUMMARY] Inference: {str(result)[:200]}")
-    # else:
-    #     logger.info(f"[SUMMARY] Inference: {str(result)[:200]}")
 
     log_inference_result(result, "video")
 
     user_data[user_id]["waiting_feedback"] = True
+    user_data[user_id]["last_result"] = result
 
 @dp.message(F.text == "📖 View Recipe")
 async def show_recipe(message: Message):
@@ -404,7 +444,7 @@ async def new_recipe(message: Message):
 @dp.message(F.text == "✅ Finish Cooking")
 async def finish_cooking(message: Message):
     user_data.pop(message.from_user.id, None)
-    await message.answer("Cooking finished! 👏 Come back when you’re hungry again!", reply_markup=mode_keyboard())
+    await message.answer("Cooking finished! 👏 Come back when you’re hungry again!", reply_markup=recipes_keyboard())
 
 @dp.callback_query(F.data.startswith("feedback_"))
 async def feedback_callback(callback: CallbackQuery):
@@ -420,6 +460,15 @@ async def feedback_callback(callback: CallbackQuery):
     await callback.message.edit_reply_markup()
     user_data[user_id]["last_feedback"] = choice
     user_data[user_id]["waiting_feedback"] = False
+
+    reward = 1 if choice == "like" else -1
+
+    bandit_policy.update(
+        user_id=user_id,
+        state=data["last_state"],
+        action=data["last_tone"],
+        reward=reward
+    )
 
     # Thank for feedback
     if choice == "like":
