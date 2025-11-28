@@ -334,7 +334,6 @@ async def handle_video(message: Message):
     finally:
         os.remove(tmp_path)
 
-
     msg = None
     msg = await format_inference_response(result, user_id)
     # if isinstance(result, dict) and result.get("type") == "video":
