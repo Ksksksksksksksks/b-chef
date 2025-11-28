@@ -13,6 +13,7 @@ import cv2
 from PIL import Image
 import numpy as np
 import torch
+from collections import Counter
 
 # Configure rich logging
 logging.basicConfig(level="INFO", format="%(message)s", handlers=[RichHandler()])
@@ -128,6 +129,7 @@ def load_photo_model():
     _photo_processor = pi.food_processor
     return _photo_model, _photo_processor
 
+
 def run_photo_inference_wrapper(image_path: str, topk: int = 5):
     import importlib.util, sys
     pi = sys.modules.get("photo_inference")
@@ -138,7 +140,8 @@ def run_photo_inference_wrapper(image_path: str, topk: int = 5):
         sys.modules["photo_inference"] = pi
         spec.loader.exec_module(pi)
 
-    # extract logits for top-k
+    result = pi.process_image(image_path)
+
     image = Image.open(image_path)
     inputs = pi.food_processor(image, return_tensors="pt")
     with torch.no_grad():
@@ -147,9 +150,12 @@ def run_photo_inference_wrapper(image_path: str, topk: int = 5):
         vals, idxs = probs.topk(topk)
         topk_labels = [pi.food_model.config.id2label[idx.item()] for idx in idxs]
         scores = {l: float(v) for l, v in zip(topk_labels, vals)}
-    top1 = topk_labels[0] if topk_labels else "unknown"
-    return {"top1": top1, "scores": scores, "raw": {"logits": logits.cpu(), "probs": probs.cpu()}}
 
+    result["top1"] = result["food"]
+    result["scores"] = scores
+    result["raw"] = {"logits": logits.cpu(), "probs": probs.cpu()}
+
+    return result
 # -------------------------
 # Fusion helpers
 # -------------------------
@@ -179,19 +185,46 @@ def pick_nouns_from_photo(photo_label: str) -> str:
 def fuse_outputs(video_out: Dict[str, Any], photo_outs: List[Dict[str, Any]]):
     video_label = video_out.get("top1", "")
     photo_labels = [p.get("top1", "") for p in photo_outs if p.get("top1")]
+    photo_doneness = [p.get("doneness", "unknown") for p in photo_outs]
+    photo_containers = [p.get("container", "unknown") for p in photo_outs]
     photo_raws = [p.get("raw") for p in photo_outs]
+
     photo_label = ""
     if photo_labels:
-        from collections import Counter
+
         cnt = Counter(photo_labels)
         photo_label = cnt.most_common(1)[0][0]
+
+    photo_doneness_final = "unknown"
+    if photo_doneness:
+        cnt = Counter(photo_doneness)
+        photo_doneness_final = cnt.most_common(1)[0][0]
+
+    photo_container_final = "unknown"
+    if photo_containers:
+        cnt = Counter(photo_containers)
+        photo_container_final = cnt.most_common(1)[0][0]
 
     verb = pick_verb(video_label)
     nouns = pick_nouns_from_photo(photo_label)
     generated = f"{verb} {nouns}" if verb and nouns else ""
-    report = {"video_top1": video_label, "photo_top1": photo_label, "photo_all_frames": photo_labels}
-    return {"generated": generated, "report": report, "video_raw": video_out.get("raw"), "photo_raws": photo_raws}
 
+    report = {
+        "video_top1": video_label,
+        "photo_top1": photo_label,
+        "photo_doneness": photo_doneness_final,
+        "photo_container": photo_container_final,
+        # "photo_all_frames": photo_labels,
+        # "photo_all_doneness": photo_doneness,
+        # "photo_all_containers": photo_containers
+    }
+
+    return {
+        "generated": generated,
+        "report": report,
+        "video_raw": video_out.get("raw"),
+        "photo_raws": photo_raws
+    }
 # -------------------------
 # Main orchestration
 # -------------------------
@@ -206,7 +239,15 @@ def run_inference(input_path: str, run_photo_on_frames: int = 5, topk_video: int
         return {
             "type": "image",
             "photo": photo_res,
-            "fusion": {"generated": "", "report": {"video_top1": "", "photo_top1": photo_res["top1"]}}
+            "fusion": {
+                "generated": "",
+                "report": {
+                    "video_top1": "",
+                    "photo_top1": photo_res["top1"],
+                    "photo_doneness": photo_res.get("doneness", "unknown"),
+                    "photo_container": photo_res.get("container", "unknown")
+                }
+            }
         }
 
     if is_video(input_path):
