@@ -122,7 +122,7 @@ def mode_keyboard():
 def recipes_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🥚 Fried Eggs"), KeyboardButton(text="🍝 Pasta")],
+            [KeyboardButton(text="🍳 Fried Eggs"), KeyboardButton(text="🍝 Pasta")],
             [KeyboardButton(text="🍚 Rice"), KeyboardButton(text="🌾 Buckwheat")],
             [KeyboardButton(text="🥚 Boiled Eggs"), KeyboardButton(text="🥔 Fried Potatoes")],
             [KeyboardButton(text="🥩 Fried Meat"), KeyboardButton(text="🍖 Stewed Meat")]

@@ -48,7 +48,7 @@ def is_video(path: str) -> bool:
 # -------------------------
 # Helpers: frames extraction
 # -------------------------
-def extract_frames_to_files(video_path: str, num: int = 5) -> List[str]:
+def extract_frames_to_files(video_path: str, num: int = 3) -> List[str]:
     cap = cv2.VideoCapture(video_path)
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
     if total == 0:
@@ -138,7 +138,7 @@ def load_photo_model():
     return _photo_model, _photo_processor
 
 
-def run_photo_inference_wrapper(image_path: str, topk: int = 5):
+def run_photo_inference_wrapper(image_path: str, topk: int = 3):
     import importlib.util, sys
     pi = sys.modules.get("photo_inference")
     if pi is None:
@@ -236,7 +236,7 @@ def fuse_outputs(video_out: Dict[str, Any], photo_outs: List[Dict[str, Any]]):
 # -------------------------
 # Main orchestration
 # -------------------------
-def run_inference(input_path: str, run_photo_on_frames: int = 5, topk_video: int = 5):
+def run_inference(input_path: str, run_photo_on_frames: int = 3, topk_video: int = 5):
     if not os.path.exists(input_path):
         raise FileNotFoundError(input_path)
     logger.info(f"[bold green]Input:[/bold green] {input_path}")
@@ -311,7 +311,7 @@ def run_inference(input_path: str, run_photo_on_frames: int = 5, topk_video: int
 def cli():
     parser = argparse.ArgumentParser(description="Unified inference for b-chef (photo + video + fusion)")
     parser.add_argument("--input", "-i", required=True, help="Path to image or video")
-    parser.add_argument("--frames", "-f", type=int, default=5, help="Number of frames to run photo model on")
+    parser.add_argument("--frames", "-f", type=int, default=3, help="Number of frames to run photo model on")
     parser.add_argument("--topk", "-k", type=int, default=5, help="Top-k for video model")
     parser.add_argument("--show-raw", action="store_true", help="Show logits and other raw outputs")
 
