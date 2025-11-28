@@ -54,7 +54,7 @@ def _load_tone_templates(tone: str):
         if not os.path.exists(path):
             return None
 
-    templates = {"correct": "", "incorrect": ""}
+    templates = {"correct": "", "incorrect": "", "correct_last": "", "incorrect_last": ""}
     current_key = None
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
@@ -76,8 +76,7 @@ def _get_template(tone: str, is_correct: bool, is_last: bool) -> str:
     if not templates:
         return None
 
-    key = "correct" if is_correct else "incorrect"
-
+    key = ("correct" if is_correct else "incorrect") + ("_last" if is_last else "")
     return templates.get(key) or templates.get("correct" if is_correct else "incorrect", "")
 
 # --- Keyboards ---
@@ -146,7 +145,7 @@ async def format_inference_response(result: dict, user_id: int) -> str:
     # === RL: check state and choose tone ===
     state = determine_state(result, user_data.get(user_id, {}))
     is_correct = state == 1
-    tone = bandit_policy.choose_action(user_id, state)
+    tone = bandit_policy.choose_action(user_id, state, user_data)
 
     # for q update after feedback
     user_data[user_id]["last_tone"] = tone
@@ -220,7 +219,7 @@ async def format_video_response(result: dict, is_last: bool,
                 container=main_container
             )
         except KeyError:
-            base_msg = template  # если в шаблоне нет всех плейсхолдеров — просто текст
+            base_msg = template
     else:
         if is_last:
             base_msg = f"🎉 Excellent! Your {main_food} looks complete!"

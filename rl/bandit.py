@@ -10,7 +10,7 @@ class BanditPolicy:
         self.epsilon_0 = epsilon_0
         self.decay_rate = decay_rate
         self.min_epsilon = min_epsilon
-        self.actions = ["grandma", "gordon", "neutral"]
+        self.actions = ["grandma", "gordon.txt", "neutral"]
         self.states = [0, 1]
 
         # Load or init Q-table (per-user dict)
@@ -26,12 +26,16 @@ class BanditPolicy:
             self.epsilons = {}
             self._save()
 
-    def choose_action(self, user_id, state):
-        user_id = str(user_id)  # Ключ как строка
+    def choose_action(self, user_id, state, user_data):
+        user_id = str(user_id)
         if user_id not in self.Q:
             self.Q[user_id] = [[0.0 for _ in self.actions] for _ in self.states]
             self.timesteps[user_id] = 0
             self.epsilons[user_id] = self.epsilon_0
+
+            initial = user_data.get(int(user_id), {}).get("initial_tone", "neutral")
+            if initial in self.actions:
+                return initial
 
         if state not in self.states:
             raise ValueError(f"Invalid state: {state}")
