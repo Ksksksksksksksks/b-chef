@@ -34,12 +34,9 @@ with open("recipes.json", "r", encoding="utf-8") as f:
 RECIPE_LIST = {
     "🍳 Fried Eggs": "fried eggs",
     "🍝 Pasta": "pasta",
-    "🍚 Rice": "rice",
-    "🌾 Buckwheat": "buckwheat",
-    "🥚 Boiled Eggs": "boiled eggs",
+    "🐟 Fried Fish": "fried fish",
     "🥩 Fried Meat": "fried meat",
-    "🍖 Stewed Meat": "stewed meat",
-    "🥔 Fried Potatoes": "fried potatoes"
+    "🍟 Fried Potatoes": "fried potatoes"
 }
 
 user_data = {}
@@ -123,9 +120,8 @@ def recipes_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="🍳 Fried Eggs"), KeyboardButton(text="🍝 Pasta")],
-            [KeyboardButton(text="🍚 Rice"), KeyboardButton(text="🌾 Buckwheat")],
-            [KeyboardButton(text="🥚 Boiled Eggs"), KeyboardButton(text="🥔 Fried Potatoes")],
-            [KeyboardButton(text="🥩 Fried Meat"), KeyboardButton(text="🍖 Stewed Meat")]
+            [KeyboardButton(text="🐟 Fried Fish")],
+            [KeyboardButton(text="🍟 Fried Potatoes"),KeyboardButton(text="🥩 Fried Meat")],
         ],
         resize_keyboard=True
     )
