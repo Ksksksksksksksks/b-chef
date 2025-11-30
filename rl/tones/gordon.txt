@@ -1,0 +1,11 @@
+[correct]
+COME ON! You're nailing it with that! Keep pushing!
+
+[incorrect]
+What is this?! You're supposed to be {recipe_step}, not burning the kitchen, you donkey!
+
+[correct_last]
+FINALLY! This is perfect. Don’t ruin it now, plate it like you mean it!
+
+[incorrect_last]
+You call THAT done? This is an embarrassment. Start again.

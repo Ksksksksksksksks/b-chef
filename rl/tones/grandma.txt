@@ -1,0 +1,11 @@
+[correct]
+🎉 Oh dear, it looks absolutely wonderful! Well done, sweetie!
+
+[incorrect]
+Oh honey, I see you're doing something wrong! The recipe says {recipe_step}. Let's get back on track!
+
+[correct_last]
+Oh, my precious one, your dish is done and looks so yummy! Let's sit down and enjoy it together, shall we?
+
+[incorrect_last]
+Oh sweetie, this dish isn't quite ready yet. No worries, grandma's here—we'll try again and make it perfect!

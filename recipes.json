@@ -4,11 +4,21 @@
     "time": "5 minutes",
     "ingredients": ["eggs — 2 pcs", "butter — 20 g", "salt", "pepper"],
     "steps": [
-      "Heat the frying pan over medium heat.",
-      "Melt a little butter.",
-      "Crack the eggs into the pan.",
-      "Add salt and pepper to taste.",
-      "Fry until the desired doneness."
+      "Heat the butter in a frying pan and crack in the two eggs.",
+      "Add salt and pepper to taste, then cook for about 3 minutes until done."
+    ],
+    "expected_per_step": [
+      {
+        "step": 1,
+        "food": ["bibimbap"]
+      },
+      {
+        "step": 2,
+        "food": ["foie_gras", "huevos_rancheros", "omelette"],
+        "doneness": ["properly fried eggs"],
+        "container": ["frying pan"],
+        "action": ["cooking egg"]
+      }
     ]
   },
   "pasta": {
@@ -16,72 +26,64 @@
     "time": "15 minutes",
     "ingredients": ["pasta — 200 g", "water — 1 L", "salt", "oil"],
     "steps": [
-      "Pour water into a pot and bring to a boil.",
-      "Add salt to the water.",
-      "Add the pasta and cook for 7–10 minutes until tender.",
-      "Drain the water and add a bit of oil.",
-      "Mix well and serve."
+      "Bring water in a pot to a boil and add the pasta.",
+      "Once it starts boiling again, reduce heat to medium and cook for 8–10 minutes."
+    ],
+    "expected_per_step": [
+      {
+        "step": 1,
+        "food": ["macaroni_and_cheese", "pasta", "spaghetti", "noodles"]
+      },
+      {
+        "step": 2,
+        "food": ["macaroni_and_cheese", "pasta", "spaghetti", "noodles"]
+      }
     ]
   },
-  "rice": {
-    "name": "Boiled Rice",
+  "fried fish": {
+    "name": "Fried Fish",
     "time": "20 minutes",
-    "ingredients": ["rice — 1 cup", "water — 2 cups", "salt", "butter"],
+    "ingredients": ["fish — 500 g", "water — 0.5 cups", "olive oil", "lemon juice"],
     "steps": [
-      "Rinse the rice under cold water until the water runs clear.",
-      "Boil water in a pot and add salt.",
-      "Add the rice and cook on low heat for 15–20 minutes with the lid on.",
-      "When the water is absorbed, add a bit of butter and mix.",
-      "Let it sit covered for 5 minutes."
-    ]
-  },
-  "buckwheat": {
-    "name": "Buckwheat Porridge",
-    "time": "20 minutes",
-    "ingredients": ["buckwheat — 1 cup", "water — 2 cups", "salt", "butter"],
-    "steps": [
-      "Rinse the buckwheat under cold water.",
-      "Bring the water to a boil and add salt.",
-      "Add the buckwheat and cook for 15–20 minutes on low heat with the lid on.",
-      "When the water evaporates, add butter and mix.",
-      "Let it sit covered for 5 minutes."
-    ]
-  },
-  "boiled eggs": {
-    "name": "Boiled Eggs",
-    "time": "10 minutes",
-    "ingredients": ["eggs — 2–4 pcs", "water", "salt (optional)"],
-    "steps": [
-      "Place the eggs in a pot and cover with cold water.",
-      "Put on medium heat and bring to a boil.",
-      "Cook for 4–5 minutes for soft-boiled or 8–10 minutes for hard-boiled eggs.",
-      "Carefully drain the hot water and add cold water.",
-      "Peel and serve!"
+      "Cut the fish into steaks or pieces, season them and brush with lemon juice.",
+      "Heat the oil in a pan and fry the fish on both sides for about 5 minutes until golden brown."
+    ],
+    "expected_per_step": [
+      {
+        "step": 1,
+        "food": ["sashimi"],
+        "doneness": ["raw fish"],
+        "container": ["plate"]
+      },
+      {
+        "step": 2,
+        "food": ["grilled_salmon"],
+        "doneness": ["overcooked fish"],
+        "container": ["frying pan"]
+      }
     ]
   },
   "fried meat": {
     "name": "Fried Meat",
-    "time": "25 minutes",
+    "time": "40 minutes",
     "ingredients": ["meat — 300 g", "vegetable oil — 2 tbsp", "salt", "pepper", "spices to taste"],
     "steps": [
-      "Cut the meat into small pieces.",
-      "Heat a frying pan with oil.",
-      "Add the meat and fry over high heat until golden brown.",
-      "Reduce the heat, add salt, pepper, and spices.",
-      "Cover with a lid and cook for another 10–15 minutes until tender."
-    ]
-  },
-  "stewed meat": {
-    "name": "Stewed Meat",
-    "time": "60 minutes",
-    "ingredients": ["meat — 500 g", "onion — 1 pc", "carrot — 1 pc", "oil", "salt", "pepper", "water or broth — 200 ml"],
-    "steps": [
-      "Cut the meat into cubes.",
-      "Fry the meat in a pot or deep pan until lightly browned.",
-      "Add chopped onion and carrot, fry for another 5 minutes.",
-      "Add salt, pepper, and a bit of water or broth.",
-      "Cover and simmer over low heat for 40–50 minutes until tender.",
-      "Add extra spices if needed."
+      "Cut the meat into small pieces, heat the oil in a frying pan, then add the meat along with pepper, salt, and onions if desired.",
+      "Fry until fully cooked, adding a little water occasionally if needed."
+    ],
+    "expected_per_step": [
+      {
+        "step": 1,
+        "food": ["steak"],
+        "doneness": ["rare steak"],
+        "container": ["frying pan"]
+      },
+      {
+        "step": 2,
+        "food": ["chicken_wings", "steak"],
+        "doneness": ["overcooked chicken"],
+        "container": ["frying pan"]
+      }
     ]
   },
   "fried potatoes": {
@@ -89,12 +91,24 @@
     "time": "25 minutes",
     "ingredients": ["potatoes", "vegetable oil", "salt", "onion (optional)"],
     "steps": [
-      "Peel and cut the potatoes into thin slices or sticks.",
-      "Heat a frying pan with vegetable oil.",
-      "Add the potatoes and fry over medium heat without covering for 10–15 minutes.",
-      "Stir occasionally to prevent burning.",
-      "Add salt and, if you like, some onion.",
-      "When the potatoes are golden and soft — they’re ready!"
+      "Peel the potatoes and cut them into slices or small pieces.",
+      "Heat oil in a frying pan and add the potatoes along with any additional ingredients you like.",
+      "Fry until cooked through, stirring regularly."
+    ],
+    "expected_per_step": [
+      {
+        "step": 1,
+        "food": ["french_fries"]
+      },
+      {
+        "step": 2,
+        "food": ["french_fries"]
+      },
+      {
+        "step": 3,
+        "food": ["french_fries"],
+        "action": ["cooking egg"]
+      }
     ]
   }
 }

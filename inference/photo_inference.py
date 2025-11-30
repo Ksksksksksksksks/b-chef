@@ -49,12 +49,20 @@ def detect_and_crop(image, prompt):
         outputs = dino_model(**inputs)
     target_sizes = torch.tensor([image.size[::-1]])
     results = dino_processor.post_process_grounded_object_detection(
-        outputs,
-        inputs['input_ids'],
+        outputs = outputs,
+        input_ids = inputs['input_ids'],
         target_sizes=target_sizes,
-        threshold=0.35
+        # threshold=0.35
     )[0]
-    #print(f"Debug: Detection scores for '{prompt}': {results['scores']}")  # Debug low scores if detection fails
+    threshold = 0.35
+    valid_indices = [i for i, score in enumerate(results["scores"]) if score >= threshold]
+
+    print(f"Debug: Detection scores for '{prompt}': {results['scores']}")  # Debug
+    print(f"Debug: Valid indices after threshold {threshold}: {valid_indices}")  # Debug
+
+    if not valid_indices:
+        print("Debug: No detection above threshold, using original image")
+        return image
 
     if len(results["boxes"]) == 0:
         #print("Debug: No detection, using original image")
@@ -89,12 +97,21 @@ def recognize_container(image):
         outputs = dino_model(**inputs)
     target_sizes = torch.tensor([image.size[::-1]])
     results = dino_processor.post_process_grounded_object_detection(
-        outputs,
-        inputs['input_ids'],
+        outputs=outputs,
+        input_ids=inputs['input_ids'],
         target_sizes=target_sizes,
-        threshold=0.35
+        # threshold=0.35
     )[0]
-    #print(f"Debug: Container detection scores: {results['scores']}")  # Debug
+
+    threshold = 0.35
+    valid_indices = [i for i, score in enumerate(results["scores"]) if score >= threshold]
+
+    print(f"Debug: Container detection scores: {results['scores']}")  # Debug
+    print(f"Debug: Container labels: {results['labels']}")  # Debug
+    print(f"Debug: Valid container indices after threshold {threshold}: {valid_indices}")  # Debug
+
+    if not valid_indices:
+        return "unknown"
 
     if len(results["labels"]) == 0:
         return "unknown"

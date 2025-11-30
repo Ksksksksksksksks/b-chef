@@ -90,7 +90,7 @@ def load_lora_model(weights_path: str, num_classes: int = 25):
     base.blocks[-1].proj = nn.Linear(in_features, num_classes)
     model = SlowFastWithLoRA(base, target_modules=['conv', 'conv_fast_to_slow', 'proj'])
     print(f"[LOG] Loading LoRA weights from {weights_path}")
-    state = torch.load(weights_path, map_location=DEVICE)
+    state = torch.load(weights_path, map_location=DEVICE, weights_only = False)
     model.load_state_dict(state)
     print(f"[LOG] Model loaded and set to eval mode")
     return model.eval().to(DEVICE)
