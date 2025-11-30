@@ -184,15 +184,40 @@ def determine_state(result: dict, user_data: dict):
     container = str(container).lower()
     action = str(action).lower() if action else None
 
-    if expected.get("food") and food in [f.lower() for f in expected["food"]]:
-        return 1
-    if expected.get("action") and action and action in [a.lower() for a in expected["action"]]:
-        return 1
-    if expected.get("doneness") and doneness in [d.lower() for d in expected["doneness"]]:
-        return 1
-    if expected.get("container") and container in [c.lower() for c in expected["container"]]:
-        return 1
-    return 0
+    # if expected.get("food") and food in [f.lower() for f in expected["food"]]:
+    #     return 1
+    # if expected.get("action") and action and action in [a.lower() for a in expected["action"]]:
+    #     return 1
+    # if expected.get("doneness") and doneness in [d.lower() for d in expected["doneness"]]:
+    #     return 1
+    # if expected.get("container") and container in [c.lower() for c in expected["container"]]:
+    #     return 1
+    # return 0
+
+    required_fields = []
+    if expected.get("food"):
+        required_fields.append("food")
+    if expected.get("action"):
+        required_fields.append("action")
+    if expected.get("doneness"):
+        required_fields.append("doneness")
+    if expected.get("container"):
+        required_fields.append("container")
+
+    if not required_fields:
+        return 0
+
+    for field in required_fields:
+        if field == "food" and food not in [f.lower() for f in expected["food"]]:
+            return 0
+        if field == "action" and (not action or action not in [a.lower() for a in expected["action"]]):
+            return 0
+        if field == "doneness" and doneness not in [d.lower() for d in expected["doneness"]]:
+            return 0
+        if field == "container" and container not in [c.lower() for c in expected["container"]]:
+            return 0
+
+    return 1
 
 async def format_inference_response(result: dict, user_id: int) -> str:
 
