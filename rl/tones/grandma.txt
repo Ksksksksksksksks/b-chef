@@ -1,5 +1,5 @@
 [correct]
-🎉 Oh dear, your {food} looks absolutely wonderful! Well done, sweetie!
+🎉 Oh dear, this looks absolutely wonderful! Well done, sweetie!
 
 [incorrect]
 Oh honey, I see you're on {food}, but the recipe says {recipe_step}. Let's get back on track!
