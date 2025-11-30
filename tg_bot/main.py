@@ -204,11 +204,12 @@ async def format_inference_response(result: dict, user_id: int) -> str:
     user_recipe = user_data.get(user_id, {}).get("recipe")
     user_step = user_data.get(user_id, {}).get("step", 0)
     steps = recipes.get(user_recipe, {}).get("steps", [])
-    is_last = not user_data.get(user_id, {}).get("cooking", True) or (steps and user_step >= len(steps))
+    # is_last = not user_data.get(user_id, {}).get("cooking", True) or (steps and user_step >= len(steps))
 
-    current_step_text = ""
-    if steps and user_step < len(steps):
-        current_step_text = steps[user_step].lower()
+    total_steps = len(steps)
+    is_last = (total_steps > 0) and (user_step + 1) == total_steps
+
+    current_step_text = steps[user_step].lower() if user_step < total_steps else ""
 
     # === RL: check state and choose tone ===
     # state = determine_state(result, user_data.get(user_id, {}))
