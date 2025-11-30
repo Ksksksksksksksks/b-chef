@@ -42,7 +42,7 @@ RECIPE_LIST = {
 user_data = {}
 
 # rl police init
-bandit_policy = BanditPolicy(path="qtable.json")
+bandit_policy = BanditPolicy(path="qtable.json", epsilon_0=0.5)
 
 # tones dir
 TONES_DIR = os.path.join(BASE_DIR, "rl", "tones")
