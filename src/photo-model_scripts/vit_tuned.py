@@ -14,7 +14,9 @@ from transformers import DefaultDataCollator
 import numpy as np
 from sklearn.metrics import accuracy_score, classification_report
 import matplotlib.pyplot as plt
-from torchvision.transforms import RandomResizedCrop, RandomHorizontalFlip, GaussianBlur, Compose
+from torchvision.transforms import RandomResizedCrop, RandomHorizontalFlip, GaussianBlur, Compose, CenterCrop, Resize, ToTensor, Normalize
+from peft import LoraConfig, get_peft_model
+import evaluate
 
 # General food categories and their doneness levels
 food_doneness_map = {
@@ -50,89 +52,161 @@ food101_to_general = {
     'greek_salad': 'vegetables',
 }
 
-# Load the base food classification model to fine-tune
-food_processor = AutoImageProcessor.from_pretrained("eslamxm/vit-base-food101")
-food_model = AutoModelForImageClassification.from_pretrained("eslamxm/vit-base-food101")
-
 # Load Food-101 dataset
 dataset = load_dataset("food101")
 
-# For demo, use a small subset to speed up (remove .shuffle().select() for full dataset)
 dataset["train"] = dataset["train"].shuffle(seed=42).select(range(2000))
 dataset["validation"] = dataset["validation"].shuffle(seed=42).select(range(500))
 
-# Define augmentations for training (includes Gaussian blur to handle noisy/blurry inputs)
-train_augment = Compose([
-    RandomResizedCrop((food_processor.size['height'], food_processor.size['width'])),
-    RandomHorizontalFlip(),
-    GaussianBlur(kernel_size=(3, 3), sigma=(0.1, 2.0)),
-])
+# Data prepapator for a model
+image_processor = AutoImageProcessor.from_pretrained("google/vit-base-patch16-224")
 
-# Preprocess function for train (with augmentations)
-def train_preprocess(examples):
-    images = [train_augment(img.convert("RGB")) for img in examples["image"]]
-    inputs = food_processor(images, return_tensors="pt")
-    examples["pixel_values"] = inputs["pixel_values"]
-    examples["labels"] = examples["label"]
-    return examples
+# Extract parameters from image_processor
+normalize = Normalize(mean=image_processor.image_mean, std=image_processor.image_std)
 
-# Preprocess function for eval (no augmentations)
-def eval_preprocess(examples):
-    images = [img.convert("RGB") for img in examples["image"]]
-    inputs = food_processor(images, return_tensors="pt")
-    examples["pixel_values"] = inputs["pixel_values"]
-    examples["labels"] = examples["label"]
-    return examples
+train_transforms = Compose(
+    [
+        RandomResizedCrop(image_processor.size["height"]),
+        RandomHorizontalFlip(),
+        GaussianBlur(kernel_size=(3, 3), sigma=(0.1, 2.0)),
+        ToTensor(),
+        normalize,
+    ]
+)
 
-# Apply preprocessing
-dataset["train"] = dataset["train"].map(train_preprocess, batched=True, batch_size=16)
-dataset["validation"] = dataset["validation"].map(eval_preprocess, batched=True, batch_size=16)
+val_transforms = Compose(
+    [
+        Resize(image_processor.size["height"]),
+        CenterCrop(image_processor.size["height"]),
+        ToTensor(),
+        normalize,
+    ]
+)
 
-# Remove unnecessary columns
-dataset = dataset.remove_columns(["image"])
+def preprocess_train(example_batch):
+    """Apply train_transforms across a batch."""
+    example_batch["pixel_values"] = [train_transforms(image.convert("RGB")) for image in example_batch["image"]]
+    return example_batch
 
-# Define compute_metrics for accuracy (we'll add full classification report later)
-def compute_metrics(eval_pred):
-    logits, labels = eval_pred
-    predictions = np.argmax(logits, axis=-1)
-    acc = accuracy_score(labels, predictions)
-    return {"accuracy": acc}
 
-# Training arguments with label smoothing to reduce noisy data impact
-training_args = TrainingArguments(
-    output_dir="photo-model_scripts/food_finetune",
-    num_train_epochs=5,
-    per_device_train_batch_size=16,
-    per_device_eval_batch_size=16,
-    eval_strategy="epoch",  # Changed from evaluation_strategy
+def preprocess_val(example_batch):
+    """Apply val_transforms across a batch."""
+    example_batch["pixel_values"] = [val_transforms(image.convert("RGB")) for image in example_batch["image"]]
+    return example_batch
+
+# Map labels from string to int and vice versa (Food-101 has 101 classes)
+label2id, id2label = dict(), dict()
+labels = dataset["train"].features["label"].names
+for i, label in enumerate(labels):
+    label2id[label] = i
+    id2label[i] = label
+
+# Use the existing train/validation split from Food-101
+train_ds = dataset["train"]
+val_ds = dataset["validation"]
+
+train_ds.set_transform(preprocess_train)
+val_ds.set_transform(preprocess_val)
+
+def print_trainable_parameters(model):
+    """
+    Prints the number of trainable parameters in the model.
+    """
+    trainable_params = 0
+    all_param = 0
+    for _, param in model.named_parameters():
+        all_param += param.numel()
+        if param.requires_grad:
+            trainable_params += param.numel()
+    print(
+        f"trainable params: {trainable_params} || all params: {all_param} || trainable%: {100 * trainable_params / all_param:.2f}"
+    )
+
+# Detect device
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"Using device: {device}")
+
+# Load the base model
+model = AutoModelForImageClassification.from_pretrained(
+    "google/vit-base-patch16-224",
+    label2id=label2id,
+    id2label=id2label,
+    ignore_mismatched_sizes=True
+)
+model.to(device)
+print_trainable_parameters(model)
+
+# Load LoRA config
+config = LoraConfig(
+    r=32,
+    lora_alpha=16,
+    target_modules=["query", "value"],
+    lora_dropout=0.1,
+    bias="none",
+    modules_to_save=["classifier"],
+)
+
+lora_model = get_peft_model(model, config)
+print_trainable_parameters(lora_model)
+
+batch_size = 32
+
+args = TrainingArguments(
+    "models_weights/food_finetune",
+    remove_unused_columns=False,
+    eval_strategy="epoch",
     save_strategy="epoch",
-    learning_rate=2e-5,
-    weight_decay=0.01,
-    label_smoothing_factor=0.1,  # Key: Reduces impact of noisy labels
+    learning_rate=5e-3,
+    per_device_train_batch_size=batch_size,
+    gradient_accumulation_steps=4,
+    per_device_eval_batch_size=batch_size,
+    fp16=(device == "cuda"),
+    num_train_epochs=50,
+    logging_steps=10,
     load_best_model_at_end=True,
     metric_for_best_model="accuracy",
-    report_to="none",  # Disable logging to external services
+    label_smoothing_factor=0.1,  # Kept for noisy data handling
+    push_to_hub=False,
+    label_names=["labels"],
+    report_to='none'
 )
+
+metric = evaluate.load("accuracy")
+
+# the compute_metrics function takes a Named Tuple as input:
+# predictions, which are the logits of the model as Numpy arrays,
+# and label_ids, which are the ground-truth labels as Numpy arrays.
+def compute_metrics(eval_pred):
+    """Computes accuracy on a batch of predictions"""
+    predictions = np.argmax(eval_pred.predictions, axis=1)
+    return metric.compute(predictions=predictions, references=eval_pred.label_ids)
+
+def collate_fn(examples):
+    pixel_values = torch.stack([example["pixel_values"] for example in examples])
+    labels = torch.tensor([example["label"] for example in examples])
+    return {"pixel_values": pixel_values, "labels": labels}
 
 # Initialize Trainer
 trainer = Trainer(
-    model=food_model,
-    args=training_args,
-    train_dataset=dataset["train"],
-    eval_dataset=dataset["validation"],
-    data_collator=DefaultDataCollator(return_tensors="pt"),
+    model=lora_model,
+    args=args,
+    train_dataset=train_ds,
+    eval_dataset=val_ds,
+    tokenizer=image_processor,
     compute_metrics=compute_metrics,
+    data_collator=collate_fn,
 )
 
 # Fine-tune the model
+print("Starting training...")
 trainer.train()
 
 # Explicitly save the best model (trainer already loads the best at end)
-trainer.save_model("photo-model_scripts/food_finetune/best_model")
-food_processor.save_pretrained("photo-model_scripts/food_finetune/best_model")
+trainer.save_model("models_weights/food_finetune/best_model")
+image_processor.save_pretrained("models_weights/food_finetune/best_model")
 
 # Save mappings to JSON
-with open("photo-model_scripts/food_finetune/mappings.json", "w") as f:
+with open("models_weights/food_finetune/mappings.json", "w") as f:
     json.dump({
         "food_doneness_map": food_doneness_map,
         "container_classes": container_classes,
